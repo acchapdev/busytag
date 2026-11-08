@@ -92,7 +92,8 @@ src/busytag/
   colors.py     # color names/hex, LED selection → mask
   images.py     # fit static images to 240x280 PNG; GIFs pass through with warnings
   cli.py        # info, brightness, files, raw, image {…}, led {…}, status, agents, hook
-  status.py     # agent state store, most-urgent aggregation, device push
+  status.py     # agent state store, most-urgent aggregation, LED plan, device push
+  config.py     # ~/.config/busytag/config.toml: LED brightness, per-agent-type colors
   render.py     # draws the 240x280 status screen (headline, reason, agent list)
   hooks.py      # Claude Code hook event (stdin JSON) → status update
   tui.py        # Later: textual dashboard
@@ -108,6 +109,11 @@ tests/          # FakeSerial / FakeDevice, no hardware needed; `just test`
   finish out of order. Agents silent for 12 h are dropped.
 - **Screen updates** take ~1 s (upload + show). The device won't overwrite the image it is
   showing (`ERROR:3`), so status images alternate between `bt_status0.png` and `bt_status1.png`.
+- **LEDs:** color = the most urgent agent's type color (config, keyed by the ID prefix
+  before `:`); effect = state (attention pulses, done solid, working 25%, error solid red).
+  There is no LED brightness command (`AT+LB?` etc. return `ERROR:1`), so `[leds] brightness`
+  scales every color busytag sends. Brightness is part of the screen key, so changing it
+  re-pushes. Status files: pick the one **not on screen per `AT+SP?`**, not per state.json.
 - **Home:** on the first status push, the user's image, LED color and custom pattern are saved
   in `state.json` and restored when no agents are active (`busytag agents --reset` forces it).
 - **Device errors** (unplugged, Busy Tag app holding the port) never lose the report: they

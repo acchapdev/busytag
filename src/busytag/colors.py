@@ -32,6 +32,12 @@ def parse_color(value):
   raise ValueError(f"'{value}' is not a color. Use RRGGBB hex or one of: {names}")
 
 
+def scale_color(color, percent):
+  """Dim an RRGGBB color to `percent` of its brightness."""
+  channels = [int(color[i:i + 2], 16) for i in (0, 2, 4)]
+  return ''.join(f'{round(channel * percent / 100):02X}' for channel in channels)
+
+
 def parse_leds(value):
   """Turn 'all', '1,3,5' or a raw mask like '127' into a 7-bit LED mask."""
   text = value.strip().lower()

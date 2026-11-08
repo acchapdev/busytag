@@ -13,7 +13,9 @@ busytag image fill purple                 # solid screen color
 busytag led color red --leds 1,4,7        # names or RRGGBB; LEDs 1-7, 'all', or a mask
 busytag led pattern "Red Pulses" -r 3     # built-in pattern by name or ID; 255 = forever
 busytag led patterns | stop | off
-busytag brightness 60
+busytag led brightness 40               # LED brightness %, saved in the config
+busytag brightness 60                     # display brightness
+busytag config                            # show the config file
 busytag raw 'AT+GFV'                      # debug: send any AT command
 ```
 
@@ -25,13 +27,37 @@ Quit the Busy Tag desktop app first: only one program can use the port.
 Agents report their state; the screen shows the most urgent one, plus a list of every
 active agent. When the last agent finishes, your own image, LED color and pattern come back.
 
+The LED **color** says which kind of agent it is; the LED **effect** says its state.
+
 | State | Screen | LEDs |
 |-------|--------|------|
-| `attention` | orange "NEEDS YOU" + reason | pulsing orange |
-| `error` | red "ERROR" | solid red |
-| `done` | green "DONE" | solid green |
-| `working` | blue "WORKING" | solid blue |
+| `attention` | orange "NEEDS YOU" + reason | pulsing, in the agent's color |
+| `error` | red "ERROR" | solid red (any agent) |
+| `done` | green "DONE" | solid, agent's color |
+| `working` | blue "WORKING" | dim (25%), agent's color |
 | `idle` / `clear` | not shown / removed | — |
+
+### Agent colors and LED brightness
+
+`~/.config/busytag/config.toml` (created on first use; `BUSYTAG_CONFIG` to override):
+
+```toml
+[leds]
+brightness = 100          # also set with: busytag led brightness 40
+
+[agents.claude]
+color = "FF6000"          # orange
+[agents.opencode]
+color = "0060FF"          # blue
+[agents.default]
+color = "FFFFFF"          # any type not listed
+```
+
+An agent's type is the part of its ID before `:`. Claude Code sessions report as
+`claude:<session>`; report other agents as `<type>:<id>`, e.g.
+`busytag status working -a opencode:ses42 -l api-server`. Add a type by adding an
+`[agents.<type>]` table. The device has no LED brightness setting, so busytag scales
+every LED color it sends (solid colors, patterns and status LEDs).
 
 ```bash
 busytag status attention --agent build --label "CI build" --detail "tests failed"

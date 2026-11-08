@@ -6,7 +6,7 @@ from typing import Annotated, Optional
 
 import typer
 
-from busytag.colors import parse_color, parse_leds
+from busytag.colors import parse_color, parse_leds, scale_color
 from busytag.device import BusyTagError, Device
 from busytag import images as image_tools
 
@@ -180,9 +180,32 @@ def led_color(
   color: Annotated[str, typer.Argument(parser=color_arg, help='Name or RRGGBB.')],
   leds: LedsOption = 'all',
 ):
-  """Set LEDs to a solid color (stops any pattern)."""
+  """Set LEDs to a solid color (stops any pattern), at the configured LED brightness."""
+  from busytag import config, status as board
+
   with connect(ctx) as device:
-    device.solid_color(color, leds)
+    device.solid_color(scale_color(color, config.load()['brightness']), leds)
+  if leds == 127:
+    board.remember_led_color(color)
+
+
+@led_app.command('brightness')
+def led_brightness(
+  ctx: typer.Context,
+  level: Annotated[Optional[int], typer.Argument(min=1, max=100, help='1-100 percent; omit to read.')] = None,
+):
+  """Read or set LED brightness (saved in the config; applies to every LED color busytag sends)."""
+  from busytag import config, status as board
+
+  if level is None:
+    typer.echo(config.load()['brightness'])
+    return
+  config.set_brightness(level)
+  applied, error = board.apply_brightness()
+  if error:
+    typer.secho(f'Saved, but the LEDs were not updated: {error}', fg='yellow', err=True)
+  elif applied is None:
+    typer.echo(f'LED brightness {level}%; applies to the next LED change.')
 
 
 @led_app.command('off')
@@ -206,7 +229,9 @@ def led_pattern(
   pattern: Annotated[str, typer.Argument(help="Built-in pattern name or ID, e.g. 'Red Pulses' or 17.")],
   repeat: Annotated[int, typer.Option('--repeat', '-r', min=1, max=255, help='Times to play; 255 = forever.')] = 255,
 ):
-  """Play a built-in LED pattern."""
+  """Play a built-in LED pattern, at the configured LED brightness."""
+  from busytag import config
+
   with connect(ctx) as device:
     available = device.builtin_patterns()
     match = [
@@ -217,7 +242,7 @@ def led_pattern(
       names = ', '.join(name for _, name in available)
       typer.secho(f"Error: no pattern '{pattern}'. Available: {names}", fg='red', err=True)
       raise typer.Exit(1)
-    device.play_builtin_pattern(match[0], repeat)
+    device.play_builtin_pattern(match[0], repeat, config.load()['brightness'])
 
 
 @led_app.command('stop')
@@ -281,3 +306,19 @@ def hook(
   from busytag import hooks
 
   hooks.run(source)
+
+
+@app.command('config')
+def show_config(
+  path_only: Annotated[bool, typer.Option('--path', help='Print only the config file path.')] = False,
+):
+  """Show the config file (LED brightness, agent colors); creates it with defaults if missing."""
+  from busytag import config
+
+  config.load_document()
+  path = config.config_path()
+  if path_only:
+    typer.echo(path)
+    return
+  typer.secho(f'# {path}', fg='cyan')
+  typer.echo(path.read_text())

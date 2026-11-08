@@ -12,6 +12,9 @@ import time
 from contextlib import contextmanager
 from pathlib import Path
 
+from busytag import config as user_config
+from busytag.colors import scale_color
+
 # Lowest to highest urgency; the most urgent agent decides the LEDs and headline
 STATES = ['idle', 'working', 'done', 'error', 'attention']
 PRIORITY = {state: rank for rank, state in enumerate(STATES)}
@@ -20,14 +23,25 @@ STALE_SECONDS = 12 * 3600
 # Two names because the device refuses to overwrite the image it is showing
 STATUS_FILES = ['bt_status0.png', 'bt_status1.png']
 
-# LED looks per state: ('solid', color) or ('pattern', steps). Pulse steps mirror the
-# built-in "Red Pulses" timing (speed 150, delay 10) read from the device.
-LEDS = {
-  'working': ('solid', '0030C0'),
-  'done': ('solid', '00C000'),
-  'error': ('solid', 'FF0000'),
-  'attention': ('pattern', [(127, 'FF6000', 150, 10), (127, '200C00', 150, 10)]),
-}
+ERROR_COLOR = 'FF0000'
+WORKING_PERCENT = 25
+PULSE_LOW_PERCENT = 12
+
+
+def led_plan(top, agent_color, brightness):
+  """LED look for the most urgent agent: its color says who, the effect says what.
+
+  Returns ('solid', RRGGBB) or ('pattern', steps), already scaled to `brightness`.
+  Pulse steps mirror the built-in "Red Pulses" timing (speed 150, delay 10).
+  """
+  if top == 'error':
+    return 'solid', scale_color(ERROR_COLOR, brightness)
+  if top == 'attention':
+    low = scale_color(agent_color, PULSE_LOW_PERCENT)
+    steps = [(127, agent_color, 150, 10), (127, low, 150, 10)]
+    return 'pattern', [(leds, scale_color(color, brightness), speed, delay) for leds, color, speed, delay in steps]
+  percent = WORKING_PERCENT if top == 'working' else 100
+  return 'solid', scale_color(agent_color, percent * brightness / 100)
 
 
 def state_dir():
@@ -81,27 +95,34 @@ def apply_update(state, agent, new_state, label=None, detail=None, timestamp=Non
   return True
 
 
-def summarize(agents):
-  """Return (top_state, rows) where rows are (label, state, detail), most urgent first."""
-  active = [entry for entry in agents.values() if entry['state'] != 'idle']
+def summarize(agents, settings):
+  """Return (top_state, rows), most urgent first.
+
+  Each row is (label, state, detail, color), where color is the agent type's LED color.
+  """
+  active = [(agent, entry) for agent, entry in agents.items() if entry['state'] != 'idle']
   if not active:
     return 'idle', []
-  active.sort(key=lambda entry: (-PRIORITY[entry['state']], -entry['updated']))
-  rows = [(entry['label'], entry['state'], entry['detail']) for entry in active]
+  active.sort(key=lambda item: (-PRIORITY[item[1]['state']], -item[1]['updated']))
+  rows = [
+    (entry['label'], entry['state'], entry['detail'], user_config.agent_color(settings, agent))
+    for agent, entry in active
+  ]
   return rows[0][1], rows
 
 
-def screen_key(top, rows):
-  return None if top == 'idle' else json.dumps([top, rows])
+def screen_key(top, rows, brightness):
+  # Brightness is part of the key so changing it re-pushes the LEDs
+  return None if top == 'idle' else json.dumps([top, rows, brightness])
 
 
-def needs_push(state, top, rows):
+def needs_push(state, top, rows, brightness):
   if top == 'idle':
     return 'home' in state
-  return screen_key(top, rows) != state.get('shown_key')
+  return screen_key(top, rows, brightness) != state.get('shown_key')
 
 
-def push(device, state, top, rows):
+def push(device, state, top, rows, brightness=100):
   """Make the device show `top`/`rows`, recording what is shown in `state`."""
   from busytag.render import render_status
 
@@ -128,11 +149,13 @@ def push(device, state, top, rows):
       'pattern': device.custom_pattern(),
     }
 
-  next_file = STATUS_FILES[1] if state.get('shown_file') == STATUS_FILES[0] else STATUS_FILES[0]
+  # Ask the device rather than trusting state.json: if the state was reset while a status
+  # screen is up, uploading to the file on screen would fail (ERROR:3) on every retry
+  next_file = STATUS_FILES[1] if device.current_image() == STATUS_FILES[0] else STATUS_FILES[0]
   device.upload(next_file, render_status(top, rows))
   device.show_image(next_file)
 
-  kind, value = LEDS[top]
+  kind, value = led_plan(top, rows[0][3], brightness)
   if kind == 'solid':
     # AT+SC alone leaves AT+PP reporting the old pattern as playing
     device.stop_pattern()
@@ -142,7 +165,7 @@ def push(device, state, top, rows):
     device.play_pattern(255)
 
   state['shown_file'] = next_file
-  state['shown_key'] = screen_key(top, rows)
+  state['shown_key'] = screen_key(top, rows, brightness)
 
 
 def refresh(state, open_device):
@@ -150,12 +173,14 @@ def refresh(state, open_device):
   agent's report is still saved and the next update retries the screen."""
   from busytag.device import BusyTagError
 
-  top, rows = summarize(state['agents'])
-  if not needs_push(state, top, rows):
+  settings = user_config.load()
+  brightness = settings['brightness']
+  top, rows = summarize(state['agents'], settings)
+  if not needs_push(state, top, rows, brightness):
     return
   try:
     with open_device() as device:
-      push(device, state, top, rows)
+      push(device, state, top, rows, brightness)
     state.pop('last_error', None)
   except (BusyTagError, OSError) as error:
     state.pop('shown_key', None)
@@ -181,6 +206,35 @@ def reset(open_device=default_device):
     state['agents'] = {}
     refresh(state, open_device)
     return state.get('last_error')
+
+
+def remember_led_color(color):
+  """Record the unscaled color of `busytag led color`, so a brightness change can redo it."""
+  with locked_state() as state:
+    state['manual_color'] = color
+
+
+def apply_brightness(open_device=default_device):
+  """Re-send the LEDs at the configured brightness.
+
+  With agents active the status LEDs are redrawn (brightness is part of the screen
+  key); otherwise the last `busytag led color` is re-sent. Returns (what, error).
+  """
+  with locked_state() as state:
+    top, _ = summarize(state['agents'], user_config.load())
+    if top != 'idle':
+      refresh(state, open_device)
+      return 'status', state.get('last_error')
+    color = state.get('manual_color')
+    if not color:
+      return None, None
+  from busytag.device import BusyTagError
+  try:
+    with open_device() as device:
+      device.solid_color(scale_color(color, user_config.load()['brightness']))
+  except (BusyTagError, OSError) as error:
+    return 'color', str(error)
+  return 'color', None
 
 
 def agents():

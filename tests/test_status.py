@@ -6,7 +6,7 @@ import json
 import pytest
 from PIL import Image
 
-from busytag import hooks, status as board
+from busytag import config, hooks, status as board
 from busytag.device import BusyTagError
 from busytag.render import render_status
 
@@ -61,7 +61,14 @@ class FakeDevice:
 @pytest.fixture(autouse=True)
 def state_dir(tmp_path, monkeypatch):
   monkeypatch.setenv('BUSYTAG_STATE_DIR', str(tmp_path))
+  monkeypatch.setenv('BUSYTAG_CONFIG', str(tmp_path / 'config.toml'))
   return tmp_path
+
+
+SETTINGS = {
+  'brightness': 100,
+  'agent_colors': {'claude': 'FF6000', 'opencode': '0060FF', 'default': 'FFFFFF'},
+}
 
 
 def saved(state_dir):
@@ -75,7 +82,7 @@ def test_most_urgent_agent_wins():
   board.apply_update(state, 'a', 'working', 'alpha', now=100)
   board.apply_update(state, 'b', 'attention', 'beta', 'Permission needed', now=101)
   board.apply_update(state, 'c', 'done', 'gamma', now=102)
-  top, rows = board.summarize(state['agents'])
+  top, rows = board.summarize(state['agents'], SETTINGS)
   assert top == 'attention'
   assert [row[0] for row in rows] == ['beta', 'gamma', 'alpha']
 
@@ -83,7 +90,7 @@ def test_most_urgent_agent_wins():
 def test_idle_agents_are_not_shown():
   state = {'agents': {}}
   board.apply_update(state, 'a', 'idle', now=100)
-  assert board.summarize(state['agents']) == ('idle', [])
+  assert board.summarize(state['agents'], SETTINGS) == ('idle', [])
 
 
 def test_older_report_does_not_overwrite_newer():
@@ -125,7 +132,8 @@ def test_first_update_saves_home_and_shows_status(state_dir):
   device = FakeDevice()
   board.update('a', 'working', 'alpha', open_device=device)
   assert device.calls == [
-    ('upload', 'bt_status0.png'), ('show', 'bt_status0.png'), ('stop',), ('solid', '0030C0'),
+    # Agent 'a' has no listed type, so it gets the default white, dimmed to 25% for working
+    ('upload', 'bt_status0.png'), ('show', 'bt_status0.png'), ('stop',), ('solid', '404040'),
   ]
   assert saved(state_dir)['home'] == {
     'image': 'plugin1.png',
@@ -192,8 +200,8 @@ def test_reset_restores_home(state_dir):
 # --- rendering ---------------------------------------------------------------
 
 def test_render_is_display_sized_png():
-  rows = [('busytag', 'attention', 'Claude needs your permission to use Bash')]
-  rows += [(f'project-{i}', 'working', '') for i in range(8)]
+  rows = [('busytag', 'attention', 'Claude needs your permission to use Bash', 'FF6000')]
+  rows += [(f'project-{i}', 'working', '', '0060FF') for i in range(8)]
   image = Image.open(io.BytesIO(render_status('attention', rows)))
   assert (image.format, image.size) == ('PNG', (240, 280))
 
@@ -227,3 +235,57 @@ def test_hook_never_raises_on_bad_input(monkeypatch, state_dir):
   monkeypatch.setattr('sys.stdin', io.StringIO('not json'))
   hooks.run('claude')
   assert 'JSONDecodeError' in (state_dir / 'hook.log').read_text()
+
+
+# --- agent colors and LED brightness ----------------------------------------
+
+def test_rows_carry_agent_type_color():
+  state = {'agents': {}}
+  board.apply_update(state, 'claude:s1', 'working', 'alpha', now=100)
+  board.apply_update(state, 'opencode:s2', 'done', 'beta', now=101)
+  board.apply_update(state, 'build', 'working', 'gamma', now=102)
+  _, rows = board.summarize(state['agents'], SETTINGS)
+  assert [(row[0], row[3]) for row in rows] == [('beta', '0060FF'), ('gamma', 'FFFFFF'), ('alpha', 'FF6000')]
+
+
+@pytest.mark.parametrize('top, expected', [
+  ('done', ('solid', 'FF6000')),
+  ('working', ('solid', '401800')),
+  ('error', ('solid', 'FF0000')),
+  ('attention', ('pattern', [(127, 'FF6000', 150, 10), (127, '1F0C00', 150, 10)])),
+])
+def test_led_plan_uses_agent_color(top, expected):
+  assert board.led_plan(top, 'FF6000', 100) == expected
+
+
+def test_led_plan_scales_by_brightness():
+  assert board.led_plan('done', 'FF6000', 50) == ('solid', '803000')
+  assert board.led_plan('error', 'FF6000', 50) == ('solid', '800000')
+
+
+def test_brightness_change_repushes_status():
+  device = FakeDevice()
+  board.update('claude:s1', 'done', 'alpha', open_device=device)
+  config.set_brightness(50)
+  device.calls.clear()
+  assert board.apply_brightness(open_device=device) == ('status', None)
+  assert device.calls[-1] == ('solid', '803000')
+
+
+def test_brightness_change_redoes_manual_color_when_idle():
+  device = FakeDevice()
+  board.remember_led_color('00FF00')
+  config.set_brightness(20)
+  assert board.apply_brightness(open_device=device) == ('color', None)
+  assert device.calls == [('solid', '003300')]
+
+
+def test_brightness_change_with_nothing_to_redo():
+  assert board.apply_brightness(open_device=FakeDevice()) == (None, None)
+
+
+def test_status_file_avoids_image_on_screen_even_if_state_was_reset():
+  # Another process (or a reset state file) left bt_status0.png on screen
+  device = FakeDevice(image='bt_status0.png')
+  board.update('a', 'working', open_device=device)
+  assert ('upload', 'bt_status1.png') in device.calls

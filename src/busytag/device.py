@@ -12,6 +12,8 @@ import time
 import serial
 from serial.tools import list_ports
 
+from busytag.colors import scale_color
+
 VENDOR_ID = 0x303A
 PRODUCT_ID = 0x81DF
 BAUD_RATE = 460800
@@ -212,9 +214,16 @@ class Device:
       result.append((int(pattern_id), name))
     return result
 
-  def play_builtin_pattern(self, pattern_id, repeat=255):
+  def play_builtin_pattern(self, pattern_id, repeat=255, brightness=100):
     # AT+DP loads the built-in into the custom-pattern slot; AT+PP plays that slot
     self.run(f'AT+DP={pattern_id}')
+    if brightness < 100:
+      # No LED brightness command exists, so dim the loaded steps and store them back
+      steps = [
+        (leds, scale_color(color, brightness), speed, delay)
+        for leds, color, speed, delay in self.custom_pattern()
+      ]
+      self.set_custom_pattern(steps)
     self.run(f'AT+PP=1,{repeat}')
 
   def custom_pattern(self):
