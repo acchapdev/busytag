@@ -96,9 +96,10 @@ src/busytag/
   config.py     # ~/.config/busytag/config.toml: LED brightness, per-agent-type colors
   render.py     # draws the 240x280 status screen (headline, reason, agent list)
   hooks.py      # Claude Code hook / OpenCode event (stdin JSON) → status update
+  integrations/ # `busytag setup`: Claude Code hooks merge, OpenCode plugin install/remove
+    opencode.ts # OpenCode 2 plugin (package data): forwards events to `busytag hook opencode`
   tui.py        # Later: textual dashboard
-hooks/claude-settings.json  # hook block to merge into ~/.claude/settings.json
-plugins/opencode/busytag.ts # OpenCode 2 plugin: forwards events to `busytag hook opencode`
+install.sh      # curl | bash installer: uv, `uv tool install`, `busytag setup`
 tests/          # FakeSerial / FakeDevice, no hardware needed; `just test`
 ```
 
@@ -130,6 +131,15 @@ tests/          # FakeSerial / FakeDevice, no hardware needed; `just test`
   parent come from `ctx.session.get({ sessionID })`: execution events have no location, and
   through the OpenCode service `ctx.location` is the service's folder, not the session's. Event payloads were captured
   from 2.2.5 because the docs don't describe `data`; recheck them after OpenCode upgrades.
+  The OpenCode service doesn't reload a changed plugin: `opencode service restart`.
+- **Install:** `install.sh` installs from `git+https://github.com/acchapdev/busytag`
+  (`BUSYTAG_SOURCE` overrides) and runs `busytag setup`. Setup is idempotent: it strips any
+  hook whose command matches `busytag hook claude` before adding its own, backs up
+  settings.json, and leaves a symlinked (development) OpenCode plugin alone.
+- **Testing the installer:** use a fake `$HOME` *and* point `XDG_BIN_HOME`, `XDG_DATA_HOME`,
+  `XDG_CONFIG_HOME`, `UV_TOOL_DIR`, `UV_TOOL_BIN_DIR` into it. This shell sets the XDG
+  variables to absolute paths, so a fake `$HOME` alone installs over (and `--uninstall`
+  removes) the real `busytag`.
 
 ## Conventions
 

@@ -1,7 +1,7 @@
 """Turn agent events (JSON on stdin) into status updates.
 
 Sources: Claude Code hooks (registered with "async": true) and the OpenCode plugin in
-plugins/opencode/busytag.ts, which forwards OpenCode 2 events. This never blocks the agent. It must never
+busytag/integrations/opencode.ts, which forwards OpenCode 2 events. This never blocks the agent. It must never
 fail loudly either: problems go to hook.log in the state directory and we exit 0.
 """
 

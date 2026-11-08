@@ -308,6 +308,30 @@ def hook(
   hooks.run(source)
 
 
+@app.command()
+def setup(
+  only: Annotated[Optional[str], typer.Option('--only', help="Just one integration: 'claude' or 'opencode'.")] = None,
+  remove: Annotated[bool, typer.Option('--remove', help='Remove the integrations instead.')] = False,
+):
+  """Install the agent integrations (Claude Code hooks, OpenCode plugin) for the agents found."""
+  from busytag import integrations
+  from busytag.device import find_port
+
+  if only and only not in integrations.INTEGRATIONS:
+    raise typer.BadParameter(f'use one of: {", ".join(integrations.INTEGRATIONS)}', param_hint='--only')
+  failed = False
+  for name, ok, message in integrations.run(only, remove):
+    typer.secho(f'{name}: {message}', fg=None if ok else 'red', err=not ok)
+    failed = failed or not ok
+  if not remove:
+    try:
+      typer.echo(f'Busy Tag: found at {find_port()}')
+    except BusyTagError as error:
+      typer.secho(f'Busy Tag: {error}', fg='yellow')
+  if failed:
+    raise typer.Exit(1)
+
+
 @app.command('config')
 def show_config(
   path_only: Annotated[bool, typer.Option('--path', help='Print only the config file path.')] = False,

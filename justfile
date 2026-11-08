@@ -17,5 +17,5 @@ install:
 # Link the OpenCode 2 plugin into ~/.config/opencode/plugins (follows code changes)
 install-opencode:
   mkdir -p ~/.config/opencode/plugins
-  ln -sf "{{justfile_directory()}}/plugins/opencode/busytag.ts" ~/.config/opencode/plugins/busytag.ts
-  @echo "Linked. OpenCode reloads plugins automatically; if not, run: opencode service restart"
+  ln -sf "{{justfile_directory()}}/src/busytag/integrations/opencode.ts" ~/.config/opencode/plugins/busytag.ts
+  @echo "Linked. Load it with: opencode service restart"

@@ -1,9 +1,33 @@
 # busytag
 
-Command-line control for a Busy Tag USB display (firmware 2.x).
+Command-line control for a Busy Tag USB display (firmware 2.x), and a status board that
+shows when your AI agents (Claude Code, OpenCode) are working, done, or need you.
+
+## Install
 
 ```bash
-just install                              # puts `busytag` on PATH
+curl -fsSL https://raw.githubusercontent.com/acchapdev/busytag/main/install.sh | bash
+```
+
+This installs [uv](https://docs.astral.sh/uv/) if needed, installs the `busytag` command,
+and runs `busytag setup`, which installs the agent integrations it finds:
+
+- **Claude Code:** adds an async `busytag hook claude` hook to `~/.claude/settings.json`
+  (backed up first; your other settings and hooks are kept). Applies to new sessions.
+- **OpenCode 2:** installs the plugin to `~/.config/opencode/plugins/busytag.ts`. Run
+  `opencode service restart` to load it.
+
+Run it again to upgrade. Options go after `bash -s --`: `--only claude` or
+`--only opencode` for one integration, `--uninstall` to remove everything (your config
+and state are kept). `busytag setup [--only X] [--remove]` does the integration part alone.
+macOS and Linux; on Linux you must be in the `dialout` group to use the serial port.
+
+From a checkout: `just install` (editable install that follows code changes), then
+`busytag setup`. `just install-opencode` links the plugin instead of copying it.
+
+## Use
+
+```bash
 busytag info
 busytag image list                        # * marks the image on screen
 busytag image upload photo.jpg --show     # static images are fitted to 240x280 PNG
@@ -71,7 +95,7 @@ hooks are logged to `hook.log` there. Agents silent for 12 hours are dropped.
 
 ### Claude Code
 
-Merge `hooks/claude-settings.json` into `~/.claude/settings.json`. Every event runs
+`busytag setup` adds the hooks to `~/.claude/settings.json`. Every event runs
 `busytag hook claude` with `"async": true`, so Claude never waits for the display.
 Each session shows as its project folder name.
 
@@ -85,8 +109,9 @@ Each session shows as its project folder name.
 
 ### OpenCode
 
-`just install-opencode` links `plugins/opencode/busytag.ts` into
-`~/.config/opencode/plugins/`. It is an OpenCode 2 plugin (tested on 2.2.5) that forwards
+`busytag setup` installs `src/busytag/integrations/opencode.ts` as
+`~/.config/opencode/plugins/busytag.ts`; run `opencode service restart` afterwards, because
+the running service doesn't pick up new or changed plugins. It is an OpenCode 2 plugin (tested on 2.2.5) that forwards
 session events to `busytag hook opencode` in the background. Each session shows as its
 project folder name, with the `[agents.opencode]` LED color.
 
