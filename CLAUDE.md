@@ -18,6 +18,8 @@ name would be confusing and collide on `PATH`.
 ## Reference material
 
 - `notes`: links from the user
+- `ROADMAP.md`: **checkpoint of where work stopped and what is next. Read it first when resuming;
+  update it before stopping.**
 - `DEVICE.md`: everything verified on the connected unit (IDs, file list, every probed
   command and its reply, built-in pattern IDs). **Check it before trusting the online docs.**
 - Protocol for this firmware: https://busy-tag.github.io/hardware/at-commands-v2 (2.x).
@@ -80,8 +82,8 @@ This project overrides the global Rails/React defaults. It is a local hardware t
   `uv add`.
 - `pyserial` for the device, `typer` for the CLI, `textual` for the TUI (later phase),
   `pillow` to resize or convert images to 240×280 before upload.
-- Tests: `pytest` with a fake serial transport. Hardware tests are marked `@pytest.mark.device`
-  and skipped by default.
+- Tests: `pytest` with a fake serial transport. Hardware tests are to be marked `@pytest.mark.device`
+  and skipped by default (none exist yet; see ROADMAP.md).
 - Task runner: `justfile` with a `default` recipe that lists recipes, as the first recipe.
 
 ## Architecture
