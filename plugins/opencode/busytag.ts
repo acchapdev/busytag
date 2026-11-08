@@ -56,6 +56,11 @@ interface Event {
 	};
 }
 
+interface SessionInfo {
+	directory?: string;
+	parentID?: string;
+}
+
 function report(payload: object): void {
 	try {
 		const child = spawn(BUSYTAG, ["hook", "opencode"], {
@@ -72,45 +77,60 @@ function report(payload: object): void {
 }
 
 async function setup(ctx: any) {
-	const parents = new Map<string, string>(); // subagent session -> its parent
-	const directories = new Map<string, string>(); // root session -> project directory
+	// Session ID -> its folder and parent. Execution events carry neither, and through the
+	// OpenCode service ctx.location is the service's folder, not the session's, so each
+	// session is looked up once with ctx.session.get (seeded from session.created if seen).
+	const sessions = new Map<string, Promise<SessionInfo>>();
 
-	const root = (sessionID: string): string => {
-		let current = sessionID;
-		for (let depth = 0; parents.has(current) && depth < 10; depth++) {
-			current = parents.get(current)!;
+	const lookup = (sessionID: string): Promise<SessionInfo> => {
+		let info = sessions.get(sessionID);
+		if (!info) {
+			info = Promise.resolve()
+				.then(() => ctx.session.get({ sessionID }))
+				.then((session: any) => ({
+					directory: session?.location?.directory,
+					parentID: session?.parentID,
+				}))
+				.catch(() => ({}));
+			sessions.set(sessionID, info);
 		}
-		return current;
+		return info;
 	};
 
-	const handle = (event: Event): void => {
+	const root = async (sessionID: string): Promise<[string, SessionInfo]> => {
+		let current = sessionID;
+		let info = await lookup(current);
+		for (let depth = 0; info.parentID && depth < 10; depth++) {
+			current = info.parentID;
+			info = await lookup(current);
+		}
+		return [current, info];
+	};
+
+	const handle = async (event: Event): Promise<void> => {
 		const data = event.data ?? {};
 		const sessionID = data.sessionID;
 		if (!sessionID) return;
 
-		if (event.type === "session.created" && data.parentID) {
-			parents.set(sessionID, data.parentID);
+		if (event.type === "session.created") {
+			sessions.set(
+				sessionID,
+				Promise.resolve({ directory: data.location?.directory, parentID: data.parentID }),
+			);
 			return;
 		}
 		if (!FORWARDED.has(event.type)) return;
 
-		const isSubagent = parents.has(sessionID);
-		if (isSubagent && !PROMPTS.has(event.type)) {
-			if (event.type === "session.deleted") parents.delete(sessionID);
-			return;
-		}
-
-		const rootID = root(sessionID);
-		const directory =
-			event.location?.directory ?? data.location?.directory ?? directories.get(rootID);
-		if (directory) directories.set(rootID, directory);
-		if (event.type === "session.deleted") directories.delete(rootID);
+		const [rootID, rootInfo] = await root(sessionID);
+		const isSubagent = rootID !== sessionID;
+		if (event.type === "session.deleted") sessions.delete(sessionID);
+		if (isSubagent && !PROMPTS.has(event.type)) return;
 
 		report({
 			type: event.type,
 			created: event.created,
 			sessionID: rootID,
-			directory: directory ?? ctx.location?.directory,
+			directory: rootInfo.directory ?? event.location?.directory ?? ctx.location?.directory,
 			data,
 		});
 	};
@@ -119,11 +139,11 @@ async function setup(ctx: any) {
 	void (async () => {
 		try {
 			for await (const event of ctx.event.subscribe({ signal: controller.signal })) {
-				try {
-					handle(event as Event);
-				} catch {
+				// Not awaited: a lookup must not hold up later events. Reports carry the
+				// event's own time, so busytag still applies them in order.
+				handle(event as Event).catch(() => {
 					// Skip an event we could not read; keep listening
-				}
+				});
 			}
 		} catch {
 			// Subscription ended (unload or shutdown)

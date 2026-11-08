@@ -126,7 +126,9 @@ tests/          # FakeSerial / FakeDevice, no hardware needed; `just test`
   `ctx.event.subscribe`). It is a thin forwarder; the event → state mapping lives in
   `hooks.opencode_update` so it can be tested. Agent ID is `opencode:<sessionID>`, and the
   report time is the event's `created` (ms). Subagents (`session.created` with `parentID`)
-  only forward permission/form events, under the root session. Event payloads were captured
+  only forward permission/form events, under the root session. Each session's folder and
+  parent come from `ctx.session.get({ sessionID })`: execution events have no location, and
+  through the OpenCode service `ctx.location` is the service's folder, not the session's. Event payloads were captured
   from 2.2.5 because the docs don't describe `data`; recheck them after OpenCode upgrades.
 
 ## Conventions
