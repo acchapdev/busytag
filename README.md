@@ -53,8 +53,8 @@ color = "0060FF"          # blue
 color = "FFFFFF"          # any type not listed
 ```
 
-An agent's type is the part of its ID before `:`. Claude Code sessions report as
-`claude:<session>`; report other agents as `<type>:<id>`, e.g.
+An agent's type is the part of its ID before `:`. Claude Code and OpenCode sessions report as
+`claude:<session>` and `opencode:<session>`; report other agents as `<type>:<id>`, e.g.
 `busytag status working -a opencode:ses42 -l api-server`. Add a type by adding an
 `[agents.<type>]` table. The device has no LED brightness setting, so busytag scales
 every LED color it sends (solid colors, patterns and status LEDs).
@@ -82,3 +82,23 @@ Each session shows as its project folder name.
 | `Stop` | done |
 | `StopFailure` | error |
 | `SessionEnd` | removed |
+
+### OpenCode
+
+`just install-opencode` links `plugins/opencode/busytag.ts` into
+`~/.config/opencode/plugins/`. It is an OpenCode 2 plugin (tested on 2.2.5) that forwards
+session events to `busytag hook opencode` in the background. Each session shows as its
+project folder name, with the `[agents.opencode]` LED color.
+
+| OpenCode event | Status |
+|----------------|--------|
+| `session.execution.started`, `permission.replied`, `form.replied`/`cancelled` | working |
+| `permission.asked`, `form.created` (a question for you) | attention |
+| `session.execution.succeeded` | done |
+| `session.execution.failed` | error |
+| `session.execution.interrupted` (you pressed Esc) | idle |
+| `session.deleted` | removed |
+
+Subagent sessions don't show up on their own: their permission prompts and questions are
+shown under the session that started them. The plugin looks for `~/.local/bin/busytag`
+(where `just install` puts it); set `BUSYTAG_BIN` to use another one.

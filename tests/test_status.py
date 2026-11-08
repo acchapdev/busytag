@@ -289,3 +289,49 @@ def test_status_file_avoids_image_on_screen_even_if_state_was_reset():
   device = FakeDevice(image='bt_status0.png')
   board.update('a', 'working', open_device=device)
   assert ('upload', 'bt_status1.png') in device.calls
+
+
+# --- OpenCode event mapping --------------------------------------------------
+
+@pytest.mark.parametrize('event, expected', [
+  ({'type': 'session.execution.started'}, ('working', '')),
+  ({'type': 'session.execution.succeeded'}, ('done', '')),
+  ({'type': 'session.execution.failed'}, ('error', 'Run failed')),
+  ({'type': 'session.execution.interrupted'}, ('idle', '')),
+  # Payloads as captured from OpenCode 2.2.5
+  ({'type': 'permission.asked', 'data': {'action': 'shell', 'resources': ['date'], 'save': ['date *']}},
+   ('attention', 'Permission needed: shell date')),
+  ({'type': 'permission.asked', 'data': {}}, ('attention', 'Permission needed: a tool')),
+  ({'type': 'permission.replied', 'data': {'reply': 'reject'}}, ('working', '')),
+  ({'type': 'form.created', 'data': {'title': 'Which database?'}}, ('attention', 'Which database?')),
+  ({'type': 'form.cancelled'}, ('working', '')),
+  ({'type': 'session.deleted'}, ('clear', '')),
+  ({'type': 'session.step.ended'}, None),
+])
+def test_opencode_event_mapping(event, expected):
+  assert hooks.opencode_update(event) == expected
+
+
+def test_opencode_event_uses_session_folder_and_event_time():
+  event = {
+    'type': 'session.execution.started', 'created': 1794177427488,
+    'sessionID': 'ses_abc', 'directory': '/Users/me/projects/webapp', 'data': {'sessionID': 'ses_abc'},
+  }
+  assert hooks.opencode_event(event, started=5) == ('opencode:ses_abc', 'working', 'webapp', '', 1794177427.488)
+
+
+def test_opencode_hook_updates_board(monkeypatch, state_dir):
+  calls = []
+  monkeypatch.setattr(board, 'update', lambda *args, **kwargs: calls.append((args, kwargs)))
+  monkeypatch.setattr('sys.stdin', io.StringIO(json.dumps({
+    'type': 'permission.asked', 'created': 1000, 'sessionID': 'ses_1', 'directory': '/x/api',
+    'data': {'action': 'edit', 'resources': ['main.py']},
+  })))
+  hooks.run('opencode')
+  assert calls == [(('opencode:ses_1', 'attention', 'api', 'Permission needed: edit main.py'), {'timestamp': 1.0})]
+
+
+def test_unknown_hook_source_is_logged(monkeypatch, state_dir):
+  monkeypatch.setattr('sys.stdin', io.StringIO('{}'))
+  hooks.run('codex')
+  assert "unknown hook source 'codex'" in (state_dir / 'hook.log').read_text()

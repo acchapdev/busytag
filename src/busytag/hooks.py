@@ -1,6 +1,7 @@
-"""Turn Claude Code hook events (JSON on stdin) into status updates.
+"""Turn agent events (JSON on stdin) into status updates.
 
-Hooks are registered with "async": true, so this never blocks Claude. It must never
+Sources: Claude Code hooks (registered with "async": true) and the OpenCode plugin in
+plugins/opencode/busytag.ts, which forwards OpenCode 2 events. This never blocks the agent. It must never
 fail loudly either: problems go to hook.log in the state directory and we exit 0.
 """
 
@@ -62,20 +63,74 @@ def log(message):
     pass
 
 
+def opencode_update(event):
+  """Return (state, detail) for an OpenCode 2 event forwarded by the plugin, or None.
+
+  The plugin sends {type, created, sessionID, directory, data}. Subagent sessions are
+  folded into their root session by the plugin, and only their prompts are forwarded.
+  """
+  name = event.get('type')
+  data = event.get('data') or {}
+  if name == 'session.execution.started':
+    return 'working', ''
+  if name == 'session.execution.succeeded':
+    return 'done', ''
+  if name == 'session.execution.failed':
+    return 'error', 'Run failed'
+  if name == 'session.execution.interrupted':
+    # The user pressed Esc, so they are already looking at it
+    return 'idle', ''
+  if name == 'permission.asked':
+    resources = data.get('resources') or []
+    target = f' {resources[0]}' if resources else ''
+    return 'attention', f'Permission needed: {data.get("action", "a tool")}{target}'
+  if name == 'form.created':
+    return 'attention', data.get('title') or 'Question waiting'
+  if name in ('permission.replied', 'form.replied', 'form.cancelled'):
+    return 'working', ''
+  if name == 'session.deleted':
+    return 'clear', ''
+  return None
+
+
+def claude_event(event, started):
+  """(agent, state, label, detail, timestamp) for a Claude Code hook event, or None."""
+  update = claude_update(event)
+  if update is None:
+    return None
+  state, detail = update
+  return f'claude:{event.get("session_id", "unknown")}', state, claude_label(event), detail, started
+
+
+def opencode_event(event, started):
+  """(agent, state, label, detail, timestamp) for an OpenCode event, or None."""
+  update = opencode_update(event)
+  if update is None:
+    return None
+  state, detail = update
+  # The event's own time (ms) orders reports even if the plugin's processes race
+  created = event.get('created')
+  timestamp = created / 1000 if isinstance(created, (int, float)) else started
+  label = Path(event.get('directory') or '').name or 'opencode'
+  return f'opencode:{event.get("sessionID", "unknown")}', state, label, detail, timestamp
+
+
+SOURCES = {'claude': claude_event, 'opencode': opencode_event}
+
+
 def run(source='claude'):
   # Taken before any waiting on the lock, so concurrent hooks keep their real order
   started = time.time()
   try:
-    if source != 'claude':
-      raise ValueError(f"unknown hook source '{source}'")
+    if source not in SOURCES:
+      raise ValueError(f"unknown hook source '{source}'; use one of {', '.join(SOURCES)}")
     event = json.load(sys.stdin)
-    update = claude_update(event)
-    if update is None:
+    report = SOURCES[source](event, started)
+    if report is None:
       return
-    state, detail = update
-    agent = f'claude:{event.get("session_id", "unknown")}'
-    error = board.update(agent, state, claude_label(event), detail, timestamp=started)
+    agent, state, label, detail, timestamp = report
+    error = board.update(agent, state, label, detail, timestamp=timestamp)
     if error:
-      log(f'{event.get("hook_event_name")}: device not updated: {error}')
+      log(f'{source} {event.get("hook_event_name") or event.get("type")}: device not updated: {error}')
   except Exception:
     log(traceback.format_exc().strip())

@@ -300,9 +300,9 @@ def agents(
 
 @app.command()
 def hook(
-  source: Annotated[str, typer.Argument(help="Hook source; currently only 'claude'.")] = 'claude',
+  source: Annotated[str, typer.Argument(help="Hook source: 'claude' or 'opencode'.")] = 'claude',
 ):
-  """Read a Claude Code hook event on stdin and update the status. Always exits 0."""
+  """Read an agent event (Claude Code hook or OpenCode plugin) on stdin and update the status. Always exits 0."""
   from busytag import hooks
 
   hooks.run(source)

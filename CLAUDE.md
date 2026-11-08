@@ -95,9 +95,10 @@ src/busytag/
   status.py     # agent state store, most-urgent aggregation, LED plan, device push
   config.py     # ~/.config/busytag/config.toml: LED brightness, per-agent-type colors
   render.py     # draws the 240x280 status screen (headline, reason, agent list)
-  hooks.py      # Claude Code hook event (stdin JSON) → status update
+  hooks.py      # Claude Code hook / OpenCode event (stdin JSON) → status update
   tui.py        # Later: textual dashboard
 hooks/claude-settings.json  # hook block to merge into ~/.claude/settings.json
+plugins/opencode/busytag.ts # OpenCode 2 plugin: forwards events to `busytag hook opencode`
 tests/          # FakeSerial / FakeDevice, no hardware needed; `just test`
 ```
 
@@ -121,6 +122,12 @@ tests/          # FakeSerial / FakeDevice, no hardware needed; `just test`
 - **Claude Code hooks** run with `"async": true`. Agent ID is `claude:<session_id>`; label is
   the project folder name. No event fires when the user approves a permission prompt, so
   `attention` clears on the next Pre/PostToolUse, prompt, or Stop.
+- **OpenCode plugin** (OpenCode 2 only: `export default { id, setup }`, events from
+  `ctx.event.subscribe`). It is a thin forwarder; the event → state mapping lives in
+  `hooks.opencode_update` so it can be tested. Agent ID is `opencode:<sessionID>`, and the
+  report time is the event's `created` (ms). Subagents (`session.created` with `parentID`)
+  only forward permission/form events, under the root session. Event payloads were captured
+  from 2.2.5 because the docs don't describe `data`; recheck them after OpenCode upgrades.
 
 ## Conventions
 
