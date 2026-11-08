@@ -1,7 +1,7 @@
 [project]
 name = "busytag"
 version = "0.1.0"
-description = "Add your description here"
+description = "CLI and AI-agent status board for the Busy Tag USB display (Claude Code, OpenCode)"
 readme = "README.md"
 authors = [
     { name = "acchapm1", email = "acchapm1@asu.edu" }
