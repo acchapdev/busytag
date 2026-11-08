@@ -1,0 +1,26 @@
+[project]
+name = "busytag"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "acchapm1", email = "acchapm1@asu.edu" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "pillow>=13.0.0",
+    "pyserial>=3.5",
+    "typer>=0.28.0",
+]
+
+[project.scripts]
+busytag = "busytag:main"
+
+[build-system]
+requires = ["uv_build>=0.12.5,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.2.0",
+]

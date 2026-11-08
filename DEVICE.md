@@ -74,8 +74,9 @@ only with firmware 3.x, which runs only on Busy Tag 2 hardware.
 These return `ERROR:1` on 2.0, meaning they're 3.x only: `AT+GUSBS`, `AT+DD?`, `AT+DDC?`,
 `AT+SM?`, `AT+TB?`, `AT+WM?`.
 
-Set commands (`AT+SP=`, `AT+SC=`, `AT+DB=`, `AT+DP=`, `AT+PP=`, `AT+UF=`) haven't been
-tested yet.
+Set commands verified on the device: `AT+SP=`, `AT+DC=`, `AT+DB=`, `AT+SC=`, `AT+DP=`
+(loads the pattern; `AT+PP=1,<n>` plays it), `AT+CPD=`, `AT+UF=`, `AT+DF=` (`ERROR:0` if the
+image is on screen). `AT+CP=<n>` with the `>` prompt drops steps; use `AT+CPD` instead.
 
 ### Built-in LED patterns (`AT+DP=<id>`)
 

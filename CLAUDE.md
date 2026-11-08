@@ -58,13 +58,19 @@ name would be confusing and collide on `PATH`.
   `AT+DC=<RRGGBB>` fills the screen with a solid color; `AT+DB=<n>` sets brightness.
 - LEDs: 7, addressed by bitmask `led_bits` (`1` … `64`, `127` = all). Colors are `RRGGBB`.
   - `AT+SC=<led_bits>,<RRGGBB>`: solid color
-  - `AT+DP=<id>`: built-in pattern, IDs **0–28** (see `DEVICE.md`; 25–28 aren't in the docs)
-  - `AT+CP=…`: custom pattern; `AT+PP=<play>,<repeat>` plays it (255 = forever, `0,0` stops)
+  - `AT+DP=<id>`: **loads** built-in pattern 0–28 into the single custom-pattern slot
+    (overwriting it) but doesn't play it; follow with `AT+PP=1,<repeat>`. 25–28 aren't in the docs.
+  - Custom pattern: use `AT+CPD=+CP:<leds>,<RRGGBB>,<speed>,<delay>\r\n+CP:…`. The separator
+    is the literal 4 characters `\r\n`. **Don't use `AT+CP=<n>` with the `>` prompt**: on 2.0 it
+    stores only some steps, or none.
+  - `AT+PP=<play>,<repeat>` plays the slot (255 = forever, `0,0` stops).
+- `AT+DF` returns `ERROR:0` for the image currently on screen; show another image first.
+- Events (`+evn:SP,…`) can arrive **after** `OK`; clear the input buffer before each command.
 - Storage: ~3 MB total, ~920 KB free. Check `AT+GFSS` before uploading.
 - 3.x-only commands return `ERROR:1` here: `AT+DD`, `AT+DDC`, `AT+SM`, `AT+TB`, `AT+WM`,
   `AT+GUSBS`, and all Wi-Fi and HTTP commands.
-- Set commands are documented but **not yet tested on this unit**. Verify each one before
-  building on it.
+- Verified on the device: `AT+SP=`, `AT+DC=`, `AT+DB=`, `AT+SC=`, `AT+DP=`, `AT+PP=`,
+  `AT+CPD=`, `AT+UF=`, `AT+DF=`.
 
 ## Tech stack
 
@@ -82,11 +88,15 @@ This project overrides the global Rails/React defaults. It is a local hardware t
 
 ```
 src/busytag/
-  device.py     # Transport: find port, send AT cmd, read +PREFIX/OK/ERROR, skip +evn/+log
-  cli.py        # typer app: info, image {list,show,upload,delete}, led {color,pattern,off}, brightness
-  status.py     # Agent states → (image, LED color/pattern) mapping
-  daemon.py     # Owns the serial port; agents talk to it over a Unix socket
-  tui.py        # textual dashboard (later)
+  device.py     # Built: transport (find port, run/query/query_list/raw) + device API
+  colors.py     # Built: color names/hex, LED selection → mask
+  images.py     # Built: fit static images to 240x280 PNG; GIFs pass through with warnings
+  cli.py        # Built: info, brightness, files, raw, image {list,show,upload,delete,fill},
+                #        led {color,off,pattern,patterns,stop}
+  status.py     # Next: agent states → (image, LED color/pattern) mapping
+  daemon.py     # Next: owns the serial port; agents talk to it over a Unix socket
+  tui.py        # Later: textual dashboard
+tests/          # FakeSerial replays real fw 2.0 replies; `just test`
 ```
 
 - **Only one process can hold the serial port.** Once several agents report status, a small
@@ -110,5 +120,5 @@ src/busytag/
 - Ask the user before destructive device commands: `AT+FD` (format), `AT+FR` (factory reset),
   `AT+DF` (delete file), or any firmware change.
 - **Never write `wifi_config.json` contents (Wi-Fi password) into the repo, logs, or docs.**
-- This directory is not a git repo yet. Run `git init` (and git-ignore `device-backup/`)
-  before starting the worktree workflow from the global CLAUDE.md.
+- In zsh, quote AT commands that contain `?` (`busytag raw 'AT+SP?'`), or zsh treats `?`
+  as a glob.

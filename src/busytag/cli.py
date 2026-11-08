@@ -1,0 +1,227 @@
+"""busytag command-line interface."""
+
+from contextlib import contextmanager
+from pathlib import Path
+from typing import Annotated, Optional
+
+import typer
+
+from busytag.colors import parse_color, parse_leds
+from busytag.device import BusyTagError, Device
+from busytag import images as image_tools
+
+app = typer.Typer(help='Control a Busy Tag display over USB.', no_args_is_help=True)
+image_app = typer.Typer(help='List, show, upload and delete images.', no_args_is_help=True)
+led_app = typer.Typer(help='Control the 7 LEDs.', no_args_is_help=True)
+app.add_typer(image_app, name='image')
+app.add_typer(led_app, name='led')
+
+PortOption = Annotated[
+  Optional[str],
+  typer.Option('--port', '-p', envvar='BUSYTAG_PORT', help='Serial port (auto-detected by default).'),
+]
+
+
+@app.callback()
+def main(ctx: typer.Context, port: PortOption = None):
+  ctx.obj = {'port': port}
+
+
+@contextmanager
+def connect(ctx):
+  try:
+    with Device(ctx.obj['port']) as device:
+      yield device
+  except BusyTagError as error:
+    typer.secho(f'Error: {error}', fg='red', err=True)
+    raise typer.Exit(1)
+
+
+def color_arg(value):
+  try:
+    return parse_color(value)
+  except ValueError as error:
+    raise typer.BadParameter(str(error))
+
+
+def leds_arg(value):
+  try:
+    return parse_leds(value)
+  except ValueError as error:
+    raise typer.BadParameter(str(error))
+
+
+def human_size(size):
+  return f'{size / 1024:,.1f} KB' if size >= 1024 else f'{size} B'
+
+
+# --- device ------------------------------------------------------------------
+
+@app.command()
+def info(ctx: typer.Context):
+  """Show device identity, firmware, storage and current display state."""
+  with connect(ctx) as device:
+    details = device.info()
+  total = int(details.pop('storage_total'))
+  free = int(details.pop('storage_free'))
+  width = max(len(key) for key in details) + 1
+  for key, value in details.items():
+    typer.echo(f'{key.replace("_", " ") + ":":<{width + 1}} {value}')
+  typer.echo(f'{"storage:":<{width + 1}} {human_size(free)} free of {human_size(total)}')
+
+
+@app.command()
+def brightness(
+  ctx: typer.Context,
+  level: Annotated[Optional[int], typer.Argument(min=1, max=100, help='1-100; omit to read.')] = None,
+):
+  """Read or set display brightness."""
+  with connect(ctx) as device:
+    if level is None:
+      typer.echo(device.brightness())
+    else:
+      device.set_brightness(level)
+
+
+@app.command()
+def files(ctx: typer.Context):
+  """List every file on the device, with storage usage."""
+  with connect(ctx) as device:
+    entries = device.files()
+    total, free = device.storage()
+  for name, kind, size in entries:
+    typer.echo(f'{human_size(size):>10}  {name}')
+  typer.echo(f'\n{human_size(free)} free of {human_size(total)}')
+
+
+@app.command()
+def raw(ctx: typer.Context, command: Annotated[str, typer.Argument(help='e.g. "AT+GFV"')]):
+  """Send a raw AT command and print the reply lines (for debugging)."""
+  with connect(ctx) as device:
+    for line in device.raw(command):
+      typer.echo(line)
+
+
+# --- images ------------------------------------------------------------------
+
+@image_app.command('list')
+def image_list(ctx: typer.Context):
+  """List images; the one on screen is marked with *."""
+  with connect(ctx) as device:
+    current = device.current_image()
+    entries = device.images()
+  for name, size in entries:
+    marker = '*' if name == current else ' '
+    typer.echo(f'{marker} {human_size(size):>10}  {name}')
+
+
+@image_app.command('show')
+def image_show(ctx: typer.Context, name: Annotated[str, typer.Argument(help='Image file on the device.')]):
+  """Show an image that is already on the device."""
+  with connect(ctx) as device:
+    device.show_image(name)
+
+
+@image_app.command('upload')
+def image_upload(
+  ctx: typer.Context,
+  path: Annotated[Path, typer.Argument(exists=True, dir_okay=False, help='PNG, JPG, GIF, ...')],
+  name: Annotated[Optional[str], typer.Option(help='Filename on the device.')] = None,
+  show: Annotated[bool, typer.Option('--show', '-s', help='Show it after uploading.')] = False,
+):
+  """Upload an image. Static images are fitted to 240x280 PNG."""
+  try:
+    filename, data, notes = image_tools.prepare(path)
+  except OSError as error:
+    raise typer.BadParameter(f'cannot read image: {error}')
+  filename = name or filename
+  for note in notes:
+    typer.secho(f'note: {note}', fg='yellow', err=True)
+  with connect(ctx) as device:
+    device.upload(filename, data)
+    typer.echo(f'uploaded {filename} ({human_size(len(data))})')
+    if show:
+      device.show_image(filename)
+
+
+@image_app.command('delete')
+def image_delete(
+  ctx: typer.Context,
+  name: Annotated[str, typer.Argument(help='File on the device.')],
+  yes: Annotated[bool, typer.Option('--yes', '-y', help='Skip confirmation.')] = False,
+):
+  """Delete a file from the device."""
+  if not yes:
+    typer.confirm(f'Delete {name} from the device?', abort=True)
+  with connect(ctx) as device:
+    replacement = device.delete(name)
+  if replacement:
+    typer.echo(f'{name} was on screen; now showing {replacement}')
+
+
+@image_app.command('fill')
+def image_fill(ctx: typer.Context, color: Annotated[str, typer.Argument(parser=color_arg, help='Name or RRGGBB.')]):
+  """Fill the screen with a solid color."""
+  with connect(ctx) as device:
+    device.fill_display(color)
+
+
+# --- LEDs --------------------------------------------------------------------
+
+LedsOption = Annotated[
+  int,
+  typer.Option('--leds', '-l', parser=leds_arg, help="'all', LED numbers like '1,4,7', or a mask."),
+]
+
+
+@led_app.command('color')
+def led_color(
+  ctx: typer.Context,
+  color: Annotated[str, typer.Argument(parser=color_arg, help='Name or RRGGBB.')],
+  leds: LedsOption = 'all',
+):
+  """Set LEDs to a solid color (stops any pattern)."""
+  with connect(ctx) as device:
+    device.solid_color(color, leds)
+
+
+@led_app.command('off')
+def led_off(ctx: typer.Context):
+  """Turn all LEDs off."""
+  with connect(ctx) as device:
+    device.solid_color('000000', 127)
+
+
+@led_app.command('patterns')
+def led_patterns(ctx: typer.Context):
+  """List the built-in LED patterns."""
+  with connect(ctx) as device:
+    for pattern_id, name in device.builtin_patterns():
+      typer.echo(f'{pattern_id:>3}  {name}')
+
+
+@led_app.command('pattern')
+def led_pattern(
+  ctx: typer.Context,
+  pattern: Annotated[str, typer.Argument(help="Built-in pattern name or ID, e.g. 'Red Pulses' or 17.")],
+  repeat: Annotated[int, typer.Option('--repeat', '-r', min=1, max=255, help='Times to play; 255 = forever.')] = 255,
+):
+  """Play a built-in LED pattern."""
+  with connect(ctx) as device:
+    available = device.builtin_patterns()
+    match = [
+      pattern_id for pattern_id, name in available
+      if pattern == str(pattern_id) or pattern.lower() == name.lower()
+    ]
+    if not match:
+      names = ', '.join(name for _, name in available)
+      typer.secho(f"Error: no pattern '{pattern}'. Available: {names}", fg='red', err=True)
+      raise typer.Exit(1)
+    device.play_builtin_pattern(match[0], repeat)
+
+
+@led_app.command('stop')
+def led_stop(ctx: typer.Context):
+  """Stop the running LED pattern."""
+  with connect(ctx) as device:
+    device.stop_pattern()
