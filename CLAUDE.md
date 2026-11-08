@@ -1,0 +1,114 @@
+# CLAUDE.md — busytag
+
+## What this project is
+
+A command-line tool, and later a TUI, for controlling a **Busy Tag** USB status display
+(original hardware, made by SIA BUSY TAG / Greynut). It has two parts:
+
+1. **Control CLI**: commands like `busytag image show <file>`, `busytag led color FF0000`,
+   `busytag led pattern "Red Pulses"`, `busytag brightness 50`, `busytag upload <file>`,
+   `busytag info`.
+2. **Agent status display (the end goal)**: AI agents running on this laptop (Claude Code
+   and others) show their state on the device: working, done, or needs attention. The user
+   can then see when their attention is needed even while on another tab or macOS Space.
+
+The command is named `busytag`, not `busybox`: BusyBox is a well-known Unix tool, and the
+name would be confusing and collide on `PATH`.
+
+## Reference material
+
+- `notes`: links from the user
+- `DEVICE.md`: everything verified on the connected unit (IDs, file list, every probed
+  command and its reply, built-in pattern IDs). **Check it before trusting the online docs.**
+- Protocol for this firmware: https://busy-tag.github.io/hardware/at-commands-v2 (2.x).
+  The `/hardware/at-commands` page is for 3.x; some of it doesn't apply here.
+- GitHub: https://github.com/busy-tag. `busytag-python-examples` (pyserial helper `busytag.py`)
+  and `busytag-cli` (C#/.NET) are useful prior art.
+- `device-backup/fw1.0-20261108/`: files copied off the device before the firmware upgrade.
+  **Git-ignore it**: it contains `wifi_config.json`.
+
+## Device facts (firmware 2.0)
+
+- Firmware **2.0** (upgraded from 1.0 on 2026-11-08 with the Busy Tag app). Hardware 1.0.
+  This is the original hardware, so **2.x is the ceiling**: no 3.x, no Wi-Fi, no HTTP API,
+  even though the ESP32-S3 has the radio.
+- USB VID `0x303a` / PID `0x81df`, serial `9C139EEDC770`. Find the port by VID/PID with
+  `serial.tools.list_ports`; don't hardcode `/dev/cu.usbmodem9C139EEDC7701`. Always open
+  `cu.*`, not `tty.*`.
+- **Serial is the only interface.** Since 2.0 there is no USB drive. Upload images with
+  `AT+UF=<file>,<size>`: wait for `>`, then send exactly `<size>` raw bytes.
+- 460800 baud, 8N1, commands end with `\r\n`.
+- **The serial port is exclusive.** If the Busy Tag desktop app is running, it holds the
+  port. Report that clearly instead of failing with a cryptic error.
+
+### Reading replies
+
+- Data comes in `+PREFIX:data` lines. Multi-line queries (`AT+GFL`, `AT+GPL`, `AT+CP?`,
+  `AT+GDPL`) end with `OK`. **Single-value queries (`AT+GFV` → `+FV:2.0`) have no `OK` after
+  them.** End a read on `OK`, `ERROR:<n>`, or the expected `+PREFIX:` line for single-value
+  queries.
+- Unknown command → `ERROR:1`. Error codes are listed in the AT manual (2 invalid arg,
+  3 file not found, 4 invalid size, 13 file-receive timeout, …).
+- Ignore `+evn:` (events, e.g. `+evn:SP,<file>` after showing an image) and `+log:` lines
+  while waiting for a reply.
+
+### Capabilities
+
+- Display: 240×280, PNG or animated GIF (GIFs ≤ ~1 MB). `AT+SP=<file>` shows an image;
+  `AT+DC=<RRGGBB>` fills the screen with a solid color; `AT+DB=<n>` sets brightness.
+- LEDs: 7, addressed by bitmask `led_bits` (`1` … `64`, `127` = all). Colors are `RRGGBB`.
+  - `AT+SC=<led_bits>,<RRGGBB>`: solid color
+  - `AT+DP=<id>`: built-in pattern, IDs **0–28** (see `DEVICE.md`; 25–28 aren't in the docs)
+  - `AT+CP=…`: custom pattern; `AT+PP=<play>,<repeat>` plays it (255 = forever, `0,0` stops)
+- Storage: ~3 MB total, ~920 KB free. Check `AT+GFSS` before uploading.
+- 3.x-only commands return `ERROR:1` here: `AT+DD`, `AT+DDC`, `AT+SM`, `AT+TB`, `AT+WM`,
+  `AT+GUSBS`, and all Wi-Fi and HTTP commands.
+- Set commands are documented but **not yet tested on this unit**. Verify each one before
+  building on it.
+
+## Tech stack
+
+This project overrides the global Rails/React defaults. It is a local hardware tool.
+
+- **Python 3.12+, managed with `uv`.** Never call `python`/`pip` directly; use `uv run`,
+  `uv add`.
+- `pyserial` for the device, `typer` for the CLI, `textual` for the TUI (later phase),
+  `pillow` to resize or convert images to 240×280 before upload.
+- Tests: `pytest` with a fake serial transport. Hardware tests are marked `@pytest.mark.device`
+  and skipped by default.
+- Task runner: `justfile` with a `default` recipe that lists recipes, as the first recipe.
+
+## Architecture (planned)
+
+```
+src/busytag/
+  device.py     # Transport: find port, send AT cmd, read +PREFIX/OK/ERROR, skip +evn/+log
+  cli.py        # typer app: info, image {list,show,upload,delete}, led {color,pattern,off}, brightness
+  status.py     # Agent states → (image, LED color/pattern) mapping
+  daemon.py     # Owns the serial port; agents talk to it over a Unix socket
+  tui.py        # textual dashboard (later)
+```
+
+- **Only one process can hold the serial port.** Once several agents report status, a small
+  daemon (`busytag serve`) owns the port. `busytag status …` sends to the daemon over a Unix
+  socket (e.g. `~/.cache/busytag/sock`) and falls back to talking to the device directly
+  when the daemon isn't running.
+- **Status aggregation:** the daemon tracks state per agent and shows the most urgent one:
+  `attention` > `error` > `done` > `working` > `idle`. Clearing one agent's state must not
+  hide another agent that is still waiting.
+- **Claude Code integration:** hooks in `~/.claude/settings.json` call the CLI, e.g.
+  `Notification` → `busytag status attention --agent "$SESSION"` and `Stop` →
+  `busytag status done`, `UserPromptSubmit` → `busytag status working`. Keep each hook call
+  fast (<100 ms) and never fail loudly; the device may be unplugged.
+
+## Conventions
+
+- 2-space indentation; snake_case functions and variables; CamelCase classes.
+- Keep it simple: no abstractions until a second firmware or agent type actually needs them.
+- Before uploading or deleting on the device, check free space (`AT+GFSS`) and existing
+  files (`AT+GPL`).
+- Ask the user before destructive device commands: `AT+FD` (format), `AT+FR` (factory reset),
+  `AT+DF` (delete file), or any firmware change.
+- **Never write `wifi_config.json` contents (Wi-Fi password) into the repo, logs, or docs.**
+- This directory is not a git repo yet. Run `git init` (and git-ignore `device-backup/`)
+  before starting the worktree workflow from the global CLAUDE.md.
