@@ -84,32 +84,37 @@ This project overrides the global Rails/React defaults. It is a local hardware t
   and skipped by default.
 - Task runner: `justfile` with a `default` recipe that lists recipes, as the first recipe.
 
-## Architecture (planned)
+## Architecture
 
 ```
 src/busytag/
-  device.py     # Built: transport (find port, run/query/query_list/raw) + device API
-  colors.py     # Built: color names/hex, LED selection → mask
-  images.py     # Built: fit static images to 240x280 PNG; GIFs pass through with warnings
-  cli.py        # Built: info, brightness, files, raw, image {list,show,upload,delete,fill},
-                #        led {color,off,pattern,patterns,stop}
-  status.py     # Next: agent states → (image, LED color/pattern) mapping
-  daemon.py     # Next: owns the serial port; agents talk to it over a Unix socket
+  device.py     # transport (find port, run/query/query_list/raw) + device API
+  colors.py     # color names/hex, LED selection → mask
+  images.py     # fit static images to 240x280 PNG; GIFs pass through with warnings
+  cli.py        # info, brightness, files, raw, image {…}, led {…}, status, agents, hook
+  status.py     # agent state store, most-urgent aggregation, device push
+  render.py     # draws the 240x280 status screen (headline, reason, agent list)
+  hooks.py      # Claude Code hook event (stdin JSON) → status update
   tui.py        # Later: textual dashboard
-tests/          # FakeSerial replays real fw 2.0 replies; `just test`
+hooks/claude-settings.json  # hook block to merge into ~/.claude/settings.json
+tests/          # FakeSerial / FakeDevice, no hardware needed; `just test`
 ```
 
-- **Only one process can hold the serial port.** Once several agents report status, a small
-  daemon (`busytag serve`) owns the port. `busytag status …` sends to the daemon over a Unix
-  socket (e.g. `~/.cache/busytag/sock`) and falls back to talking to the device directly
-  when the daemon isn't running.
-- **Status aggregation:** the daemon tracks state per agent and shows the most urgent one:
-  `attention` > `error` > `done` > `working` > `idle`. Clearing one agent's state must not
-  hide another agent that is still waiting.
-- **Claude Code integration:** hooks in `~/.claude/settings.json` call the CLI, e.g.
-  `Notification` → `busytag status attention --agent "$SESSION"` and `Stop` →
-  `busytag status done`, `UserPromptSubmit` → `busytag status working`. Keep each hook call
-  fast (<100 ms) and never fail loudly; the device may be unplugged.
+- **No daemon.** Each `busytag status` / `busytag hook` call takes an exclusive `flock` on
+  `~/.cache/busytag/lock` (`BUSYTAG_STATE_DIR`), updates `state.json`, and opens the serial
+  port only if the screen should change. The lock also serializes device access.
+- **Aggregation:** `attention` > `error` > `done` > `working` > `idle`; idle agents aren't
+  shown. Reports carry their start time and older ones are ignored, because async hooks can
+  finish out of order. Agents silent for 12 h are dropped.
+- **Screen updates** take ~1 s (upload + show). The device won't overwrite the image it is
+  showing (`ERROR:3`), so status images alternate between `bt_status0.png` and `bt_status1.png`.
+- **Home:** on the first status push, the user's image, LED color and custom pattern are saved
+  in `state.json` and restored when no agents are active (`busytag agents --reset` forces it).
+- **Device errors** (unplugged, Busy Tag app holding the port) never lose the report: they
+  are stored as `last_error`, logged to `hook.log` by hooks, and the next update retries.
+- **Claude Code hooks** run with `"async": true`. Agent ID is `claude:<session_id>`; label is
+  the project folder name. No event fires when the user approves a permission prompt, so
+  `attention` clears on the next Pre/PostToolUse, prompt, or Stop.
 
 ## Conventions
 

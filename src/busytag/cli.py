@@ -225,3 +225,59 @@ def led_stop(ctx: typer.Context):
   """Stop the running LED pattern."""
   with connect(ctx) as device:
     device.stop_pattern()
+
+
+# --- agent status ------------------------------------------------------------
+
+STATE_CHOICES = ['working', 'done', 'attention', 'error', 'idle', 'clear']
+
+
+@app.command()
+def status(
+  state: Annotated[str, typer.Argument(help=f'One of: {", ".join(STATE_CHOICES)}.')],
+  agent: Annotated[str, typer.Option('--agent', '-a', help='Unique ID of the reporting agent.')] = 'default',
+  label: Annotated[Optional[str], typer.Option('--label', '-l', help='Name shown on screen (defaults to the agent ID).')] = None,
+  detail: Annotated[str, typer.Option('--detail', '-d', help='Short reason, shown for the most urgent agent.')] = '',
+):
+  """Report an agent's state; the device shows the most urgent agent."""
+  from busytag import status as board
+
+  if state not in STATE_CHOICES:
+    raise typer.BadParameter(f'use one of: {", ".join(STATE_CHOICES)}', param_hint='STATE')
+  error = board.update(agent, state, label, detail)
+  if error:
+    typer.secho(f'Saved, but the device was not updated: {error}', fg='yellow', err=True)
+
+
+@app.command()
+def agents(
+  reset: Annotated[bool, typer.Option('--reset', help='Forget all agents and restore your own image and LEDs.')] = False,
+):
+  """List agents reporting status."""
+  import time
+  from busytag import status as board
+
+  if reset:
+    error = board.reset()
+    typer.echo('All agents cleared.' if not error else f'Cleared, but device not updated: {error}')
+    return
+  entries, error = board.agents()
+  if not entries:
+    typer.echo('No agents reporting.')
+  for agent, entry in entries:
+    age = int(time.time() - entry['updated'])
+    when = f'{age // 60}m ago' if age >= 60 else f'{age}s ago'
+    detail = f'  {entry["detail"]}' if entry['detail'] else ''
+    typer.echo(f'{entry["state"]:<10} {entry["label"]:<24} {when:>8}{detail}')
+  if error:
+    typer.secho(f'\nLast device error: {error}', fg='yellow')
+
+
+@app.command()
+def hook(
+  source: Annotated[str, typer.Argument(help="Hook source; currently only 'claude'.")] = 'claude',
+):
+  """Read a Claude Code hook event on stdin and update the status. Always exits 0."""
+  from busytag import hooks
+
+  hooks.run(source)
