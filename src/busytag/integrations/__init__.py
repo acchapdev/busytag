@@ -1,4 +1,5 @@
-"""Install and remove the agent integrations: Claude Code hooks and the OpenCode plugin.
+"""Install and remove the integrations: Claude Code hooks, the OpenCode plugin, and the
+macOS LaunchAgent that redraws the screen when a display is plugged in.
 
 Used by `busytag setup` (and so by install.sh). Every step is safe to repeat: our own
 entries are replaced, never duplicated, and nothing else in the user's config is touched.
@@ -6,8 +7,11 @@ entries are replaced, never duplicated, and nothing else in the user's config is
 
 import json
 import os
+import plistlib
 import re
 import shutil
+import subprocess
+import sys
 import time
 from importlib import resources
 from pathlib import Path
@@ -123,9 +127,72 @@ def setup_opencode(remove=False):
   return f'plugin installed at {target}; {OPENCODE_RELOAD}'
 
 
+WATCH_LABEL = 'com.github.acchapdev.busytag.watch'
+
+
+def launch_agent_path():
+  return Path.home() / 'Library' / 'LaunchAgents' / f'{WATCH_LABEL}.plist'
+
+
+def launchctl(*args):
+  return subprocess.run(['launchctl', *args], capture_output=True, text=True)
+
+
+def watch_plist():
+  from busytag.status import state_dir
+
+  # launchd needs an absolute path; it doesn't expand $HOME or search PATH
+  program = shutil.which('busytag')
+  if not program:
+    raise SetupError('busytag is not on PATH; install it first (install.sh or just install)')
+  log = str(state_dir() / 'watch.log')
+  plist = {
+    'Label': WATCH_LABEL,
+    'ProgramArguments': [program, 'watch'],
+    'RunAtLoad': True,
+    'KeepAlive': True,
+    'StandardOutPath': log,
+    'StandardErrorPath': log,
+  }
+  # Keep the watcher on the same state and config as the hooks
+  env = {name: os.environ[name] for name in ('BUSYTAG_STATE_DIR', 'BUSYTAG_CONFIG') if name in os.environ}
+  if env:
+    plist['EnvironmentVariables'] = env
+  return plistlib.dumps(plist)
+
+
+def setup_watch(remove=False):
+  """Install (or remove) the LaunchAgent running `busytag watch`. Returns a status line."""
+  path = launch_agent_path()
+  domain = f'gui/{os.getuid()}'
+  if remove:
+    if not path.exists():
+      return 'LaunchAgent not installed'
+    launchctl('bootout', f'{domain}/{WATCH_LABEL}')
+    path.unlink()
+    return f'stopped and removed {path}'
+  plist = watch_plist()
+  loaded = launchctl('print', f'{domain}/{WATCH_LABEL}').returncode == 0
+  if loaded and path.exists() and path.read_bytes() == plist:
+    return f'already set up in {path}'
+  if loaded:
+    launchctl('bootout', f'{domain}/{WATCH_LABEL}')
+  path.parent.mkdir(parents=True, exist_ok=True)
+  path.write_bytes(plist)
+  result = launchctl('bootstrap', domain, str(path))
+  if result.returncode != 0:
+    raise SetupError(f'launchctl bootstrap failed: {(result.stderr or result.stdout).strip()}')
+  return f'LaunchAgent installed at {path}; the screen is redrawn when a display is plugged in'
+
+
+def watch_present():
+  return sys.platform == 'darwin'
+
+
 INTEGRATIONS = {
   'claude': ('Claude Code', claude_present, setup_claude),
   'opencode': ('OpenCode', opencode_present, setup_opencode),
+  'watch': ('Plug-in refresh', watch_present, setup_watch),
 }
 
 

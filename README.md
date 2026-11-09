@@ -18,9 +18,12 @@ and runs `busytag setup`, which installs the agent integrations it finds:
   (backed up first; your other settings and hooks are kept). Applies to new sessions.
 - **OpenCode 2:** installs the plugin to `~/.config/opencode/plugins/busytag.ts`. Run
   `opencode service restart` to load it.
+- **Plug-in refresh (macOS):** installs a LaunchAgent that runs `busytag watch`, which
+  redraws the status screen within a few seconds of a display being plugged in (otherwise
+  the screen waits for the next agent event). Log: `~/.cache/busytag/watch.log`.
 
 Run it again to upgrade. Options go after `bash -s --`: `--only claude` or
-`--only opencode` for one integration, `--uninstall` to remove everything (your config
+`--only opencode` or `--only watch` for one integration, `--uninstall` to remove everything (your config
 and state are kept). `busytag setup [--only X] [--remove]` does the integration part alone.
 macOS and Linux; on Linux you must be in the `dialout` group to use the serial port.
 
@@ -113,6 +116,9 @@ busytag agents --reset    # forget everyone, restore your screen
 
 State lives in `~/.cache/busytag/` (`BUSYTAG_STATE_DIR` to override). Device errors from
 hooks are logged to `hook.log` there. Agents silent for 12 hours are dropped.
+
+The screen changes only when an agent reports. If the display was unplugged meanwhile,
+`busytag watch` (the plug-in refresh LaunchAgent) redraws it when it is plugged back in.
 
 ### Claude Code
 

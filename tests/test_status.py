@@ -335,3 +335,26 @@ def test_unknown_hook_source_is_logged(monkeypatch, state_dir):
   monkeypatch.setattr('sys.stdin', io.StringIO('{}'))
   hooks.run('codex')
   assert "unknown hook source 'codex'" in (state_dir / 'hook.log').read_text()
+
+
+def test_redraw_pushes_an_unchanged_screen():
+  device = FakeDevice()
+  board.update('a', 'working', 'alpha', open_device=device)
+  device.calls.clear()
+  assert board.redraw(open_device=device) is None
+  assert ('upload', 'bt_status1.png') in device.calls
+
+
+def test_redraw_when_idle_without_home_does_nothing():
+  device = FakeDevice()
+  assert board.redraw(open_device=device) is None
+  assert device.calls == []
+
+
+def test_redraw_drops_stale_agents(state_dir):
+  device = FakeDevice()
+  board.update('a', 'done', 'alpha', timestamp=1.0, open_device=device)
+  device.calls.clear()
+  board.redraw(open_device=device)
+  assert saved(state_dir)['agents'] == {}
+  assert ('show', 'plugin1.png') in device.calls

@@ -1,6 +1,7 @@
 """`busytag setup` tests: Claude Code settings merge and OpenCode plugin install."""
 
 import json
+import plistlib
 from pathlib import Path
 
 import pytest
@@ -15,7 +16,26 @@ def homes(tmp_path, monkeypatch):
   monkeypatch.setenv('CLAUDE_CONFIG_DIR', str(tmp_path / 'claude'))
   monkeypatch.setenv('XDG_CONFIG_HOME', str(tmp_path / 'config'))
   monkeypatch.setattr(integrations.shutil, 'which', lambda name: str(Path.home() / '.local/bin' / name))
+  # Never touch the real LaunchAgents or launchd
+  monkeypatch.setenv('HOME', str(tmp_path / 'home'))
+  monkeypatch.setenv('BUSYTAG_STATE_DIR', str(tmp_path / 'state'))
+  monkeypatch.setattr(integrations, 'launchctl', FakeLaunchctl())
   return tmp_path
+
+
+class FakeLaunchctl:
+  def __init__(self):
+    self.calls = []
+    self.loaded = False
+
+  def __call__(self, *args):
+    self.calls.append(args[0])
+    if args[0] == 'bootstrap':
+      self.loaded = True
+    elif args[0] == 'bootout':
+      self.loaded = False
+    code = 0 if args[0] != 'print' or self.loaded else 113
+    return type('Result', (), {'returncode': code, 'stdout': '', 'stderr': ''})()
 
 
 def settings_file():
@@ -113,12 +133,52 @@ def test_opencode_development_link_is_kept(tmp_path):
   assert plugin_file().is_symlink()
 
 
+# --- Plug-in refresh LaunchAgent ---------------------------------------------
+
+def test_watch_agent_installed_and_loaded():
+  message = integrations.setup_watch()
+  plist = plistlib.loads(integrations.launch_agent_path().read_bytes())
+  assert plist['ProgramArguments'] == [str(Path.home() / '.local/bin/busytag'), 'watch']
+  assert plist['KeepAlive'] is True
+  assert plist['EnvironmentVariables']['BUSYTAG_STATE_DIR'].endswith('state')
+  assert integrations.launchctl.calls == ['print', 'bootstrap']
+  assert 'installed' in message
+
+
+def test_watch_setup_is_idempotent():
+  integrations.setup_watch()
+  assert integrations.setup_watch().startswith('already set up')
+  assert integrations.launchctl.calls.count('bootstrap') == 1
+
+
+def test_watch_agent_reloaded_when_changed():
+  integrations.setup_watch()
+  integrations.launch_agent_path().write_bytes(b'old')
+  integrations.setup_watch()
+  assert integrations.launchctl.calls == ['print', 'bootstrap', 'print', 'bootout', 'bootstrap']
+
+
+def test_watch_agent_removed():
+  integrations.setup_watch()
+  assert integrations.setup_watch(remove=True).startswith('stopped and removed')
+  assert not integrations.launch_agent_path().exists()
+  assert not integrations.launchctl.loaded
+  assert integrations.setup_watch(remove=True) == 'LaunchAgent not installed'
+
+
+def test_watch_needs_busytag_on_path(monkeypatch):
+  monkeypatch.setattr(integrations.shutil, 'which', lambda name: None)
+  results = list(integrations.run(only='watch'))
+  assert results[0][1] is False
+  assert 'not on PATH' in results[0][2]
+
+
 # --- run ---------------------------------------------------------------------
 
 def test_missing_agents_are_skipped(monkeypatch):
   monkeypatch.setattr(integrations.shutil, 'which', lambda name: None)
   results = list(integrations.run())
-  assert [message for _, _, message in results] == ['not found on this computer; skipped'] * 2
+  assert [message for _, _, message in results][:2] == ['not found on this computer; skipped'] * 2
   assert not settings_file().exists()
 
 
