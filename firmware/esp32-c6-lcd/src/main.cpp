@@ -11,6 +11,7 @@
 //   {"cmd":"brightness"[,"value":1-100]}               backlight, saved in flash
 //   {"cmd":"rotate"[,"value":0-3]}                     screen rotation, saved in flash
 //   {"cmd":"fill","color":"RRGGBB"}
+//   {"cmd":"screen"}                                   what is shown: {"screen":{cmd...},"led":{...}}
 
 #include <Arduino.h>
 #include <SPI.h>
@@ -21,7 +22,7 @@
 #include <Fonts/FreeSans9pt7b.h>
 #include <Fonts/FreeSansBold12pt7b.h>
 
-#define FIRMWARE_VERSION "0.1.0"
+#define FIRMWARE_VERSION "0.2.0"
 
 // Board wiring (Waveshare ESP32-C6-LCD-1.47)
 #define PIN_MOSI 6
@@ -62,6 +63,12 @@ uint32_t parse_hex(const char *text, uint32_t fallback = 0) {
   char *end;
   uint32_t value = strtoul(text, &end, 16);
   return *end ? fallback : value;
+}
+
+String hex_color(uint32_t color) {
+  char text[7];
+  snprintf(text, sizeof(text), "%06lX", (unsigned long)(color & 0xFFFFFF));
+  return text;
 }
 
 uint16_t rgb565(uint32_t color) {
@@ -295,6 +302,17 @@ void handle(const char *text, bool redraw_only = false) {
     canvas->fillScreen(rgb565(parse_hex(doc["color"] | "000000")));
     flush_canvas();
     last_screen = text;
+  } else if (strcmp(cmd, "screen") == 0) {
+    // The host saves this before showing agent status and replays it when they finish.
+    // A status screen is reported by name only: the host never replays one.
+    JsonDocument shown;
+    deserializeJson(shown, last_screen);
+    if (strcmp(shown["cmd"] | "", "status") == 0) out["screen"]["cmd"] = "status";
+    else out["screen"] = shown;
+    const char *effects[] = {"off", "solid", "pulse"};
+    out["led"]["effect"] = effects[led_effect];
+    out["led"]["color"] = hex_color(led_color);
+    out["led"]["low"] = hex_color(led_low);
   } else if (strcmp(cmd, "led") == 0) {
     set_led(doc.as<JsonVariantConst>());
   } else if (strcmp(cmd, "brightness") == 0) {

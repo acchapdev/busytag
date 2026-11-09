@@ -93,8 +93,9 @@ def test_show_status_sends_ascii_rows_and_led():
 class FakeDrawnDevice:
   draws_status = True
 
-  def __init__(self):
+  def __init__(self, home=None):
     self.calls = []
+    self.home = home or {'screen': {'cmd': 'idle'}, 'led': {'effect': 'off'}}
 
   def __call__(self):
     return self
@@ -110,6 +111,12 @@ class FakeDrawnDevice:
 
   def show_idle(self):
     self.calls.append(('idle',))
+
+  def current_screen(self):
+    return self.home
+
+  def restore_screen(self, home):
+    self.calls.append(('restore', home))
 
 
 @pytest.fixture(autouse=True)
@@ -139,7 +146,50 @@ def test_same_screen_is_not_pushed_twice_and_idle_returns():
   board.update('a', 'working', 'alpha', open_device=device)
   board.update('a', 'clear', open_device=device)
   board.update('b', 'idle', open_device=device)
-  assert [call[0] for call in device.calls] == ['status', 'idle']
+  assert [call[0] for call in device.calls] == ['status', 'restore']
+
+
+def test_home_screen_and_led_come_back():
+  home = {'screen': {'cmd': 'fill', 'color': '003366'}, 'led': {'effect': 'solid', 'color': '00FF00', 'low': '000000'}}
+  device = FakeDrawnDevice(home)
+  board.update('a', 'working', 'alpha', open_device=device)
+  device.home = {'screen': {'cmd': 'status'}, 'led': {'effect': 'solid', 'color': '401800'}}
+  board.update('b', 'attention', 'beta', open_device=device)
+  board.update('a', 'clear', open_device=device)
+  board.update('b', 'clear', open_device=device)
+  assert device.calls[-1] == ('restore', home)
+
+
+def test_leftover_status_screen_is_not_home():
+  device = FakeDrawnDevice({'screen': {'cmd': 'status'}, 'led': {'effect': 'pulse', 'color': 'FF6000'}})
+  board.update('a', 'working', 'alpha', open_device=device)
+  board.update('a', 'clear', open_device=device)
+  assert device.calls[-1] == ('restore', {'screen': {'cmd': 'idle'}, 'led': {'effect': 'off'}})
+
+
+def test_state_without_home_falls_back_to_idle():
+  device = FakeDrawnDevice()
+  with board.locked_state() as state:
+    state['drawn'] = True
+  board.update('a', 'idle', open_device=device)
+  assert device.calls == [('idle',)]
+
+
+def test_current_screen_and_restore():
+  reply = {'ok': True, 'screen': {'cmd': 'fill', 'color': '003366'},
+           'led': {'effect': 'solid', 'color': '00FF00', 'low': '000000'}}
+  device = make(reply, {'ok': True}, {'ok': True})
+  home = device.current_screen()
+  device.restore_screen(home)
+  assert device.conn.sent[1:] == [
+    {'cmd': 'fill', 'color': '003366'},
+    {'cmd': 'led', 'effect': 'solid', 'color': '00FF00', 'low': '000000'},
+  ]
+
+
+def test_old_firmware_home_is_idle():
+  device = make({'ok': False, 'error': 'unknown command'})
+  assert device.current_screen() == {'screen': {'cmd': 'idle'}, 'led': {'effect': 'off'}}
 
 
 # --- detection ---------------------------------------------------------------

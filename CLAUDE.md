@@ -140,6 +140,8 @@ tests/          # FakeSerial / FakeDevice, no hardware needed; `just test`
   re-pushes. Status files: pick the one **not on screen per `AT+SP?`**, not per state.json.
 - **Home:** on the first status push, the user's image, LED color and custom pattern are saved
   in `state.json` and restored when no agents are active (`busytag agents --reset` forces it).
+  On the ESP32, home is the screen command (`idle` or `fill`) and LED state that the firmware
+  reports through `{"cmd":"screen"}` (firmware 0.2.0; older firmware counts as idle).
 - **Device errors** (unplugged, Busy Tag app holding the port) never lose the report: they
   are stored as `last_error`, logged to `hook.log` by hooks, and the next update retries.
 - **Claude Code hooks** run with `"async": true`. Agent ID is `claude:<session_id>`; label is

@@ -118,7 +118,7 @@ def screen_key(top, rows, brightness):
 
 def needs_push(state, top, rows, brightness):
   if top == 'idle':
-    # 'home' (Busy Tag) or 'drawn' (ESP32) means a status screen may still be up
+    # 'home' means a status screen may still be up ('drawn': ESP32 state from before 'home')
     return 'home' in state or 'drawn' in state
   return screen_key(top, rows, brightness) != state.get('shown_key')
 
@@ -175,12 +175,23 @@ def push(device, state, top, rows, brightness=100):
 def push_drawn(device, state, top, rows, brightness):
   """Push to a display whose firmware draws the status screen (the ESP32)."""
   if top == 'idle':
-    device.show_idle()
+    home = state.pop('home', None)
+    if home and 'screen' in home:
+      device.restore_screen(home)
+    else:
+      # No ESP32 home: state from before ESP32 home screens ('drawn'), or a Busy Tag's home
+      device.show_idle()
     state.pop('drawn', None)
     state.pop('shown_key', None)
     return
-  # Set before pushing, so a failed push still gets the idle screen later
-  state['drawn'] = True
+  if 'home' not in state:
+    # Remember the screen (idle, a fill color) and the LED to put back when all agents
+    # finish. Saved before pushing, so a failed push is still restored later.
+    home = device.current_screen()
+    # A leftover status screen (e.g. state file deleted) is not the user's own screen
+    if home['screen'].get('cmd') == 'status':
+      home = {'screen': {'cmd': 'idle'}, 'led': {'effect': 'off'}}
+    state['home'] = home
   kind, value = led_plan(top, rows[0][3], brightness)
   if kind == 'solid':
     led = {'effect': 'solid', 'color': value}
