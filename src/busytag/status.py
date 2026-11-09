@@ -118,7 +118,8 @@ def screen_key(top, rows, brightness):
 
 def needs_push(state, top, rows, brightness):
   if top == 'idle':
-    return 'home' in state
+    # 'home' (Busy Tag) or 'drawn' (ESP32) means a status screen may still be up
+    return 'home' in state or 'drawn' in state
   return screen_key(top, rows, brightness) != state.get('shown_key')
 
 
@@ -126,6 +127,9 @@ def push(device, state, top, rows, brightness=100):
   """Make the device show `top`/`rows`, recording what is shown in `state`."""
   from busytag.render import render_status
 
+  if getattr(device, 'draws_status', False):
+    push_drawn(device, state, top, rows, brightness)
+    return
   if top == 'idle':
     home = state.pop('home', None)
     if home:
@@ -168,6 +172,25 @@ def push(device, state, top, rows, brightness=100):
   state['shown_key'] = screen_key(top, rows, brightness)
 
 
+def push_drawn(device, state, top, rows, brightness):
+  """Push to a display whose firmware draws the status screen (the ESP32)."""
+  if top == 'idle':
+    device.show_idle()
+    state.pop('drawn', None)
+    state.pop('shown_key', None)
+    return
+  # Set before pushing, so a failed push still gets the idle screen later
+  state['drawn'] = True
+  kind, value = led_plan(top, rows[0][3], brightness)
+  if kind == 'solid':
+    led = {'effect': 'solid', 'color': value}
+  else:
+    # The attention pattern alternates full and low; the firmware fades between them
+    led = {'effect': 'pulse', 'color': value[0][1], 'low': value[1][1]}
+  device.show_status(top, rows, led)
+  state['shown_key'] = screen_key(top, rows, brightness)
+
+
 def refresh(state, open_device):
   """Push to the device if needed. Device problems are recorded, not raised, so the
   agent's report is still saved and the next update retries the screen."""
@@ -188,8 +211,8 @@ def refresh(state, open_device):
 
 
 def default_device():
-  from busytag.device import Device
-  return Device()
+  from busytag.device import open_device
+  return open_device()
 
 
 def update(agent, new_state, label=None, detail=None, timestamp=None, open_device=default_device):
