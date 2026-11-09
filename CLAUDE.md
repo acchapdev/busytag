@@ -17,7 +17,7 @@ name would be confusing and collide on `PATH`.
 
 ## Reference material
 
-- `notes`: links from the user
+- `notes`: the user's scratch notes (links, ideas); git-ignored, may be missing
 - `ROADMAP.md`: **checkpoint of where work stopped and what is next. Read it first when resuming;
   update it before stopping.**
 - `DEVICE.md`: everything verified on the connected unit (IDs, file list, every probed

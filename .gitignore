@@ -8,3 +8,6 @@ firmware/*/.pio/
 
 # Written into the project by local tools (OpenCode / Rex MCP config); not part of busytag
 opencode.json
+
+# The user's own scratch notes (links, ideas); ideas worth keeping go in ROADMAP.md
+notes
