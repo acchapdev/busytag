@@ -17,7 +17,7 @@ name would be confusing and collide on `PATH`.
 
 ## Reference material
 
-- `notes`: links from the user
+- `notes`: the user's scratch notes (links, ideas); git-ignored, may be missing
 - `ROADMAP.md`: **checkpoint of where work stopped and what is next. Read it first when resuming;
   update it before stopping.**
 - `DEVICE.md`: everything verified on the connected unit (IDs, file list, every probed
@@ -120,7 +120,7 @@ src/busytag/
   watch.py      # `busytag watch`: polls USB ports, redraws the screen when a display appears
   integrations/ # `busytag setup`: Claude Code hooks merge, OpenCode plugin, watch LaunchAgent
     opencode.ts # OpenCode 2 plugin (package data): forwards events to `busytag hook opencode`
-  tui.py        # Later: textual dashboard
+  tui.py        # `busytag tui`: textual dashboard (live agents, display controls)
 firmware/esp32-c6-lcd/  # PlatformIO firmware for the Waveshare ESP32-C6-LCD-1.47
 install.sh      # curl | bash installer: uv, `uv tool install`, `busytag setup`
 tests/          # FakeSerial / FakeDevice, no hardware needed; `just test`
@@ -134,6 +134,11 @@ tests/          # FakeSerial / FakeDevice, no hardware needed; `just test`
   port list every 2 s without opening ports and calls `status.redraw()` (push even if the
   screen key is unchanged) when a display port appears, including at login. Log:
   `~/.cache/busytag/watch.log`. The plist holds busytag's absolute path; rerun setup if it moves.
+- **TUI:** reads state.json every second without the lock (`status.peek`; writes are atomic
+  replaces), so it never waits on a push. Device commands run in thread workers under
+  `status.device_lock()`, the hooks' lock. Dialogs from a thread worker use
+  `push_screen(screen, callback)`, not `push_screen_wait`. Keep widget references:
+  `query_one` searches the active screen, which may be a dialog. Tests drive it headless.
 - **Aggregation:** `attention` > `error` > `done` > `working` > `idle`; idle agents aren't
   shown. Reports carry their start time and older ones are ignored, because async hooks can
   finish out of order. Agents silent for 12 h are dropped.

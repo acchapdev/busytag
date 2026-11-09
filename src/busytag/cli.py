@@ -355,6 +355,14 @@ def watch():
   watcher.run(board.redraw, log=lambda line: print(line, flush=True))
 
 
+@app.command()
+def tui():
+  """Open the dashboard: live agent list and display controls."""
+  from busytag import tui as dashboard
+
+  dashboard.run()
+
+
 @app.command('config')
 def show_config(
   path_only: Annotated[bool, typer.Option('--path', help='Print only the config file path.')] = False,

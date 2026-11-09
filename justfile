@@ -6,6 +6,10 @@ default:
 test:
   uv run pytest -q
 
+# Open the dashboard (live agents and display controls)
+tui:
+  uv run busytag tui
+
 # Show device info
 info:
   uv run busytag info

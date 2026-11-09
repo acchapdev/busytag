@@ -32,6 +32,11 @@ From a checkout: `just install` (editable install that follows code changes), th
 
 ## Use
 
+`busytag tui` opens a dashboard: the agents reporting (most urgent first, refreshed every
+second) and the display, with keys for clearing an agent (`x`) or all (`R`), showing an
+image (`i`), filling the screen (`f`), LED color (`c`), built-in patterns (`p`), LEDs off
+(`o`), and brightness (`[` `]` screen, `-` `+` LEDs).
+
 ```bash
 busytag info
 busytag image list                        # * marks the image on screen
