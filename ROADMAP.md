@@ -22,6 +22,9 @@ No open branches or worktrees. 110 tests pass (`just test`).
   `busytag` auto-detects it (a Busy Tag wins if both are plugged in). Verified on the board:
   `info`, `status`, `agents`, `rotate` (rotation 3 is upright in the case), the layout, and
   the LED color order (RGB).
+- ESP32 home screen: like the Busy Tag, the ESP32 puts back the screen (idle or a fill color)
+  and LED it showed before agent status, using the `screen` command in firmware 0.2.0
+  (flashed and verified on the board 2026-11-09).
 - Installer: `curl -fsSL https://raw.githubusercontent.com/acchapdev/busytag/main/install.sh | bash`,
   plus `busytag setup [--only claude|opencode] [--remove]`. Tested end to end from GitHub in a sandbox.
 

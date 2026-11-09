@@ -159,3 +159,20 @@ class Esp32Device:
 
   def show_idle(self):
     self.request('idle')
+
+  def current_screen(self):
+    """What is shown now: {'screen': {'cmd': ..., ...}, 'led': {'effect', 'color', 'low'}}."""
+    try:
+      reply = self.request('screen')
+    except BusyTagError as error:
+      # Firmware 0.1.0 has no `screen` command; treat its screen as the idle one
+      if 'unknown command' not in str(error):
+        raise
+      return {'screen': {'cmd': 'idle'}, 'led': {'effect': 'off'}}
+    return {'screen': reply['screen'], 'led': reply['led']}
+
+  def restore_screen(self, home):
+    """Show a screen saved by current_screen(): the screen first, since `idle` turns the LED off."""
+    screen = dict(home['screen'])
+    self.request(screen.pop('cmd'), **screen)
+    self.request('led', **home['led'])

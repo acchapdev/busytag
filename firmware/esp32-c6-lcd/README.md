@@ -39,6 +39,7 @@ Each request is one line, and each reply is one line: `{"ok":true,...}` or
 | `{"cmd":"brightness","value":1-100}` | Sets the backlight (omit `value` to read) |
 | `{"cmd":"rotate","value":0-3}` | Sets the rotation and redraws (omit `value` to read) |
 | `{"cmd":"fill","color":"RRGGBB"}` | Fills the screen with one color |
+| `{"cmd":"screen"}` | Replies with `screen` (the last screen command, e.g. `{"cmd":"fill","color":"003366"}`; a status screen is only `{"cmd":"status"}`) and `led` (`effect`, `color`, `low`). Added in 0.2.0 |
 
 The fonts are ASCII-only, and the host converts text to ASCII first.
 
