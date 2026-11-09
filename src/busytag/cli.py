@@ -323,10 +323,11 @@ def hook(
 
 @app.command()
 def setup(
-  only: Annotated[Optional[str], typer.Option('--only', help="Just one integration: 'claude' or 'opencode'.")] = None,
+  only: Annotated[Optional[str], typer.Option('--only', help="Just one integration: 'claude', 'opencode' or 'watch'.")] = None,
   remove: Annotated[bool, typer.Option('--remove', help='Remove the integrations instead.')] = False,
 ):
-  """Install the agent integrations (Claude Code hooks, OpenCode plugin) for the agents found."""
+  """Install the integrations: Claude Code hooks and OpenCode plugin for the agents found, and
+  on macOS a LaunchAgent that redraws the screen when a display is plugged in."""
   from busytag import integrations
 
   if only and only not in integrations.INTEGRATIONS:
@@ -343,6 +344,15 @@ def setup(
       typer.secho(f'Display: {error}', fg='yellow')
   if failed:
     raise typer.Exit(1)
+
+
+@app.command()
+def watch():
+  """Redraw the status screen whenever a display is plugged in (run by the LaunchAgent)."""
+  from busytag import status as board
+  from busytag import watch as watcher
+
+  watcher.run(board.redraw, log=lambda line: print(line, flush=True))
 
 
 @app.command('config')

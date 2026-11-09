@@ -25,6 +25,8 @@ No open branches or worktrees. 110 tests pass (`just test`).
 - ESP32 home screen: like the Busy Tag, the ESP32 puts back the screen (idle or a fill color)
   and LED it showed before agent status, using the `screen` command in firmware 0.2.0
   (flashed and verified on the board 2026-11-09).
+- Plug-in refresh: `busytag watch` (LaunchAgent installed by `busytag setup`) redraws the
+  status screen when a display is plugged in, instead of waiting for the next agent event.
 - Installer: `curl -fsSL https://raw.githubusercontent.com/acchapdev/busytag/main/install.sh | bash`,
   plus `busytag setup [--only claude|opencode] [--remove]`. Tested end to end from GitHub in a sandbox.
 

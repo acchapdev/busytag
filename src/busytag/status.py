@@ -68,14 +68,18 @@ def locked_state():
     temp.replace(path)
 
 
+def drop_stale(state, now):
+  agents = state['agents']
+  for name in [name for name, entry in agents.items() if now - entry['updated'] > STALE_SECONDS]:
+    del agents[name]
+
+
 def apply_update(state, agent, new_state, label=None, detail=None, timestamp=None, now=None):
   """Record one agent's report. Returns False if it was older than what we have."""
   now = time.time() if now is None else now
   timestamp = now if timestamp is None else timestamp
   agents = state['agents']
-
-  for name in [name for name, entry in agents.items() if now - entry['updated'] > STALE_SECONDS]:
-    del agents[name]
+  drop_stale(state, now)
 
   current = agents.get(agent)
   # Hooks run in the background, so a late process must not undo a newer report
@@ -238,6 +242,16 @@ def reset(open_device=default_device):
   """Forget every agent and put the user's own image and LEDs back."""
   with locked_state() as state:
     state['agents'] = {}
+    refresh(state, open_device)
+    return state.get('last_error')
+
+
+def redraw(open_device=default_device):
+  """Push the current status even if it looks unchanged: a display that was just plugged
+  in may show an old status (Busy Tag) or its boot screen (ESP32)."""
+  with locked_state() as state:
+    drop_stale(state, time.time())
+    state.pop('shown_key', None)
     refresh(state, open_device)
     return state.get('last_error')
 

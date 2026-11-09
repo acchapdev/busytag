@@ -117,7 +117,8 @@ src/busytag/
   config.py     # ~/.config/busytag/config.toml: LED brightness, per-agent-type colors
   render.py     # draws the 240x280 status screen (headline, reason, agent list)
   hooks.py      # Claude Code hook / OpenCode event (stdin JSON) → status update
-  integrations/ # `busytag setup`: Claude Code hooks merge, OpenCode plugin install/remove
+  watch.py      # `busytag watch`: polls USB ports, redraws the screen when a display appears
+  integrations/ # `busytag setup`: Claude Code hooks merge, OpenCode plugin, watch LaunchAgent
     opencode.ts # OpenCode 2 plugin (package data): forwards events to `busytag hook opencode`
   tui.py        # Later: textual dashboard
 firmware/esp32-c6-lcd/  # PlatformIO firmware for the Waveshare ESP32-C6-LCD-1.47
@@ -128,6 +129,11 @@ tests/          # FakeSerial / FakeDevice, no hardware needed; `just test`
 - **No daemon.** Each `busytag status` / `busytag hook` call takes an exclusive `flock` on
   `~/.cache/busytag/lock` (`BUSYTAG_STATE_DIR`), updates `state.json`, and opens the serial
   port only if the screen should change. The lock also serializes device access.
+- **Plug-in refresh:** the one long-running process is `busytag watch`, kept alive by the
+  LaunchAgent `com.github.acchapdev.busytag.watch` (`busytag setup`, macOS only). It polls the
+  port list every 2 s without opening ports and calls `status.redraw()` (push even if the
+  screen key is unchanged) when a display port appears, including at login. Log:
+  `~/.cache/busytag/watch.log`. The plist holds busytag's absolute path; rerun setup if it moves.
 - **Aggregation:** `attention` > `error` > `done` > `working` > `idle`; idle agents aren't
   shown. Reports carry their start time and older ones are ignored, because async hooks can
   finish out of order. Agents silent for 12 h are dropped.
