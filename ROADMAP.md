@@ -27,6 +27,12 @@ No open branches or worktrees. 110 tests pass (`just test`).
   (flashed and verified on the board 2026-11-09).
 - Plug-in refresh: `busytag watch` (LaunchAgent installed by `busytag setup`) redraws the
   status screen when a display is plugged in, instead of waiting for the next agent event.
+- TUI (`busytag tui`): live agent list (most urgent first, with IDs), clear one agent or all,
+  and display controls: image picker, screen fill, LED color, built-in patterns, LEDs off,
+  screen and LED brightness. Checked headless against the Busy Tag.
+- Desktop apps checked 2026-11-09: the Claude desktop **Code tab** runs the hooks, and
+  **OpenCode desktop** reports through the service plugin with the right folder label.
+  Desktop chat and Cowork (a VM) can't run host hooks; not needed.
 - Installer: `curl -fsSL https://raw.githubusercontent.com/acchapdev/busytag/main/install.sh | bash`,
   plus `busytag setup [--only claude|opencode] [--remove]`. Tested end to end from GitHub in a sandbox.
 
@@ -42,8 +48,7 @@ No open branches or worktrees. 110 tests pass (`just test`).
 
 ## Next up
 
-1. **TUI** (`textual`): the original idea. A live dashboard of agents and device controls
-   (image picker, LED color/pattern, brightness). Not started; `src/busytag/tui.py` is planned.
+1. **TUI, next steps:** image upload/delete from the dashboard, and an agent detail view.
 2. **Watch an interactive OpenCode permission prompt on the device.** The attention state is
    tested only with captured events (non-interactive runs reject prompts instantly). Open
    OpenCode with `"permission": {"bash": "ask"}`, trigger a command, and check the blue pulse.
@@ -52,6 +57,16 @@ No open branches or worktrees. 110 tests pass (`just test`).
 4. **CI**: a GitHub Actions workflow running `uv run pytest` on push.
 5. **Hardware tests**: CLAUDE.md mentions `@pytest.mark.device` tests, but none exist yet.
 6. **Release/versioning**: still `0.1.0`, no tags. `BUSYTAG_REF` in `install.sh` can pin a tag.
+
+## Future ideas
+
+- **Bluetooth for the ESP32 display**, so it works without a USB cable. The ESP32-C6 has BLE.
+- **Touch input**: there is an ESP32 1.47" board with a touch screen. What touch should do
+  is still open; options to explore: tap to dismiss attention (clear the top agent), swipe
+  through agents, tap an agent for its detail, or long-press to clear all.
+- **Shorter timeout for closed sessions**: closing a terminal without exiting the agent leaves
+  it as `done` for 12 h (and only drops then on the next report). A configurable timeout for
+  `done` agents would fix it; the TUI's clear key (`x`) is the manual way meanwhile.
 
 ## Open decisions
 

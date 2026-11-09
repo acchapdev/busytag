@@ -51,17 +51,34 @@ def state_dir():
 
 
 @contextmanager
+def device_lock():
+  """Hold the lock that hooks take, so a manual device command doesn't collide with a
+  status push on the exclusive serial port."""
+  with open(state_dir() / 'lock', 'w') as lock:
+    fcntl.flock(lock, fcntl.LOCK_EX)
+    yield
+
+
+def read_state(path):
+  try:
+    state = json.loads(path.read_text())
+  except (FileNotFoundError, json.JSONDecodeError):
+    state = {}
+  state.setdefault('agents', {})
+  return state
+
+
+def peek():
+  """Read the state without the lock (writes replace the file atomically)."""
+  return read_state(state_dir() / 'state.json')
+
+
+@contextmanager
 def locked_state():
   """Yield the state dict under an exclusive lock; it is saved on exit."""
-  directory = state_dir()
-  with open(directory / 'lock', 'w') as lock:
-    fcntl.flock(lock, fcntl.LOCK_EX)
-    path = directory / 'state.json'
-    try:
-      state = json.loads(path.read_text())
-    except (FileNotFoundError, json.JSONDecodeError):
-      state = {}
-    state.setdefault('agents', {})
+  with device_lock():
+    path = state_dir() / 'state.json'
+    state = read_state(path)
     yield state
     temp = path.with_suffix('.tmp')
     temp.write_text(json.dumps(state, indent=2))
