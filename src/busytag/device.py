@@ -53,12 +53,42 @@ def find_port():
   raise BusyTagError('No Busy Tag found. Is it plugged in with a data cable?')
 
 
+def open_device(port=None):
+  """Open the display: a Busy Tag (found by its USB ID), else an ESP32 running the busytag
+  firmware (found by asking every Espressif port `hello`). `port` skips the search."""
+  from busytag.esp32 import Esp32Device
+
+  ports = list_ports.comports()
+  if port:
+    match = next((p for p in ports if p.device.replace('/dev/tty.', '/dev/cu.') == port), None)
+    return Device(port) if match and match.pid == PRODUCT_ID else Esp32Device(port)
+  for candidate in ports:
+    if candidate.vid == VENDOR_ID and candidate.pid == PRODUCT_ID:
+      return Device(candidate.device.replace('/dev/tty.', '/dev/cu.'))
+  for candidate in ports:
+    if candidate.vid != VENDOR_ID or candidate.device.startswith('/dev/tty.'):
+      continue
+    try:
+      device = Esp32Device(candidate.device)
+    except BusyTagError:
+      continue
+    try:
+      device.hello(timeout=1.0)
+      return device
+    except BusyTagError:
+      device.close()
+  raise BusyTagError('No Busy Tag or busytag ESP32 display found. Is it plugged in with a data cable?')
+
+
 class Device:
+  name = 'Busy Tag'
+
   def __init__(self, port=None, connection=None):
+    self.port = port
     if connection is not None:
       self.conn = connection
       return
-    port = port or find_port()
+    port = self.port = port or find_port()
     try:
       self.conn = serial.Serial(port, BAUD_RATE, timeout=0.1, exclusive=True)
     except serial.SerialException as error:

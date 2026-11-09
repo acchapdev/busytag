@@ -1,7 +1,9 @@
 # busytag
 
 Command-line control for a Busy Tag USB display (firmware 2.x), and a status board that
-shows when your AI agents (Claude Code, OpenCode) are working, done, or need you.
+shows when your AI agents (Claude Code, OpenCode) are working, done, or need you. The
+status board also runs on a Waveshare ESP32-C6-LCD-1.47 with busytag's own firmware
+(see [ESP32 display](#esp32-display)).
 
 ## Install
 
@@ -45,6 +47,25 @@ busytag raw 'AT+GFV'                      # debug: send any AT command
 
 The port is auto-detected; override with `--port` or `BUSYTAG_PORT`.
 Quit the Busy Tag desktop app first: only one program can use the port.
+
+## ESP32 display
+
+A [Waveshare ESP32-C6-LCD-1.47](https://www.waveshare.com/wiki/ESP32-C6-LCD-1.47) (1.47"
+172x320 screen, one RGB LED) can stand in for the Busy Tag. Its firmware, in
+`firmware/esp32-c6-lcd/`, draws the status screen itself in landscape, so updates take
+about 0.1 s. Flash it once from a checkout (PlatformIO runs through `uvx`):
+
+```bash
+just fw-flash            # build and flash; the board must be the only ESP32 plugged in
+busytag info             # should say busytag-esp32
+busytag rotate 1         # flip 180 degrees if it is upside down in your case (saved)
+```
+
+`busytag` finds the display on its own: a Busy Tag wins if both are plugged in, and
+`--port` / `BUSYTAG_PORT` picks one. The ESP32 supports `status`, `agents`, `hook`, `info`,
+`brightness`, `rotate`, `image fill`, `led color|off|stop|brightness` and `raw` (a JSON
+line such as `'{"cmd":"hello"}'`). It has no image storage or LED patterns. See
+`firmware/esp32-c6-lcd/README.md` for the protocol and how to restore the factory demo.
 
 ## Agent status
 

@@ -7,12 +7,12 @@ from typing import Annotated, Optional
 import typer
 
 from busytag.colors import parse_color, parse_leds, scale_color
-from busytag.device import BusyTagError, Device
+from busytag.device import BusyTagError, open_device
 from busytag import images as image_tools
 
-app = typer.Typer(help='Control a Busy Tag display over USB.', no_args_is_help=True)
+app = typer.Typer(help='Control a Busy Tag or busytag ESP32 display over USB.', no_args_is_help=True)
 image_app = typer.Typer(help='List, show, upload and delete images.', no_args_is_help=True)
-led_app = typer.Typer(help='Control the 7 LEDs.', no_args_is_help=True)
+led_app = typer.Typer(help='Control the LEDs (7 on a Busy Tag, 1 on the ESP32).', no_args_is_help=True)
 app.add_typer(image_app, name='image')
 app.add_typer(led_app, name='led')
 
@@ -30,7 +30,7 @@ def main(ctx: typer.Context, port: PortOption = None):
 @contextmanager
 def connect(ctx):
   try:
-    with Device(ctx.obj['port']) as device:
+    with open_device(ctx.obj['port']) as device:
       yield device
   except BusyTagError as error:
     typer.secho(f'Error: {error}', fg='red', err=True)
@@ -62,12 +62,25 @@ def info(ctx: typer.Context):
   """Show device identity, firmware, storage and current display state."""
   with connect(ctx) as device:
     details = device.info()
-  total = int(details.pop('storage_total'))
-  free = int(details.pop('storage_free'))
+  total = details.pop('storage_total', None)
+  free = details.pop('storage_free', None)
   width = max(len(key) for key in details) + 1
   for key, value in details.items():
     typer.echo(f'{key.replace("_", " ") + ":":<{width + 1}} {value}')
-  typer.echo(f'{"storage:":<{width + 1}} {human_size(free)} free of {human_size(total)}')
+  if total is not None:
+    typer.echo(f'{"storage:":<{width + 1}} {human_size(int(free))} free of {human_size(int(total))}')
+
+
+@app.command()
+def rotate(
+  ctx: typer.Context,
+  value: Annotated[Optional[int], typer.Argument(min=0, max=3, help='0-3 in 90 degree steps; 1 and 3 are landscape. Omit to read.')] = None,
+):
+  """Read or set the screen rotation (ESP32 display only; saved on the device)."""
+  with connect(ctx) as device:
+    if not getattr(device, 'draws_status', False):
+      raise BusyTagError("The Busy Tag's screen can't be rotated.")
+    typer.echo(device.rotate(value))
 
 
 @app.command()
@@ -315,7 +328,6 @@ def setup(
 ):
   """Install the agent integrations (Claude Code hooks, OpenCode plugin) for the agents found."""
   from busytag import integrations
-  from busytag.device import find_port
 
   if only and only not in integrations.INTEGRATIONS:
     raise typer.BadParameter(f'use one of: {", ".join(integrations.INTEGRATIONS)}', param_hint='--only')
@@ -325,9 +337,10 @@ def setup(
     failed = failed or not ok
   if not remove:
     try:
-      typer.echo(f'Busy Tag: found at {find_port()}')
+      with open_device() as device:
+        typer.echo(f'Display: {device.name} found at {device.port}')
     except BusyTagError as error:
-      typer.secho(f'Busy Tag: {error}', fg='yellow')
+      typer.secho(f'Display: {error}', fg='yellow')
   if failed:
     raise typer.Exit(1)
 

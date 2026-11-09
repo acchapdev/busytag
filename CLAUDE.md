@@ -74,6 +74,24 @@ name would be confusing and collide on `PATH`.
 - Verified on the device: `AT+SP=`, `AT+DC=`, `AT+DB=`, `AT+SC=`, `AT+DP=`, `AT+PP=`,
   `AT+CPD=`, `AT+UF=`, `AT+DF=`.
 
+## ESP32 display (second device)
+
+A Waveshare **ESP32-C6-LCD-1.47** (ESP32-C6FH8, 8 MB flash, no PSRAM, 172x320 ST7789,
+one WS2812 LED on GPIO 8 in RGB, not GRB, order) runs busytag's own firmware, in `firmware/esp32-c6-lcd/`
+(PlatformIO + pioarduino/Arduino 3.x via `uvx --from platformio`; `just fw-flash`). Its
+README has the pins, protocol, and how to restore the factory flash backup in `device-backup/`.
+
+- One JSON object per line each way; the firmware draws the status screen itself
+  (landscape 320x172, USB-C on the right = rotation 3). Updates take ~0.1 s.
+- USB ID `0x303a:0x1001` is shared by every ESP32 with built-in USB, so `open_device()`
+  identifies it with `{"cmd":"hello"}` → `"device":"busytag-esp32"`. A Busy Tag wins if both are present.
+- **Don't set `dtr = False` before opening its port:** pyserial lowers DTR before RTS, and
+  RTS-high/DTR-low resets the chip. pyserial's defaults are safe.
+- The USB-CDC receive buffer is raised to 4 KB; the 256-byte default cut off status lines.
+- Brightness and rotation are saved in NVS. The fonts are ASCII-only, and the host converts text to ASCII.
+- Don't run `pio pkg install` with the PlatformIO in `~/.platformio/penv`: its version
+  (`6.2.0.post1`) fails pioarduino's `>=6.2.0` check, and it uninstalled the platform once.
+
 ## Tech stack
 
 This project overrides the global Rails/React defaults. It is a local hardware tool.
@@ -90,7 +108,8 @@ This project overrides the global Rails/React defaults. It is a local hardware t
 
 ```
 src/busytag/
-  device.py     # transport (find port, run/query/query_list/raw) + device API
+  device.py     # Busy Tag transport + device API; open_device() picks Busy Tag or ESP32
+  esp32.py      # ESP32 display transport (JSON lines); firmware draws the status screen
   colors.py     # color names/hex, LED selection → mask
   images.py     # fit static images to 240x280 PNG; GIFs pass through with warnings
   cli.py        # info, brightness, files, raw, image {…}, led {…}, status, agents, hook
@@ -101,6 +120,7 @@ src/busytag/
   integrations/ # `busytag setup`: Claude Code hooks merge, OpenCode plugin install/remove
     opencode.ts # OpenCode 2 plugin (package data): forwards events to `busytag hook opencode`
   tui.py        # Later: textual dashboard
+firmware/esp32-c6-lcd/  # PlatformIO firmware for the Waveshare ESP32-C6-LCD-1.47
 install.sh      # curl | bash installer: uv, `uv tool install`, `busytag setup`
 tests/          # FakeSerial / FakeDevice, no hardware needed; `just test`
 ```

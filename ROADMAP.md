@@ -2,10 +2,19 @@
 
 Where the project stands and what is left. Update the checkpoint when you stop working.
 
-## Checkpoint: 2026-11-08
+## Checkpoint: 2026-11-08 (ESP32 display)
 
-Everything is merged to `main` and pushed to https://github.com/acchapdev/busytag (public).
-No open branches or worktrees. 97 tests pass (`just test`).
+Work in progress on branch `feat-esp32-backend` (worktree `~/projects/busytag.feat-esp32-backend`),
+not merged yet. 110 tests pass. Adds the Waveshare ESP32-C6-LCD-1.47 as a second display:
+firmware in `firmware/esp32-c6-lcd/` (flashed to the board and working), `esp32.py`,
+`open_device()` auto-detection, and a device-drawn path in `status.push`. Verified on the board:
+`info`, `status`, `agents`, `rotate` (rotation 3 is upright in the case), and update time (0.14 s).
+Also verified: the screen layout and the LED color order (RGB, fixed after red showed as green).
+The editable `busytag` on PATH still points at the main checkout, so hooks use the Busy Tag code
+until this branch is merged.
+
+Before this branch, everything was merged to `main` and pushed to
+https://github.com/acchapdev/busytag (public).
 
 **Done**
 

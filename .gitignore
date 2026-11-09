@@ -4,6 +4,7 @@ __pycache__/
 *.pyc
 .pytest_cache/
 dist/
+firmware/*/.pio/
 
 # Written into the project by local tools (OpenCode / Rex MCP config); not part of busytag
 opencode.json
