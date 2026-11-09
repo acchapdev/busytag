@@ -85,18 +85,28 @@ def locked_state():
     temp.replace(path)
 
 
-def drop_stale(state, now):
+def is_stale(entry, now, done_timeout=None):
+  age = now - entry['updated']
+  if done_timeout and entry['state'] == 'done' and age > done_timeout:
+    return True
+  return age > STALE_SECONDS
+
+
+def drop_stale(state, now, done_timeout=None):
+  """Forget silent agents, and finished ones after `done_timeout` seconds. Returns how many."""
   agents = state['agents']
-  for name in [name for name, entry in agents.items() if now - entry['updated'] > STALE_SECONDS]:
+  stale = [name for name, entry in agents.items() if is_stale(entry, now, done_timeout)]
+  for name in stale:
     del agents[name]
+  return len(stale)
 
 
-def apply_update(state, agent, new_state, label=None, detail=None, timestamp=None, now=None):
+def apply_update(state, agent, new_state, label=None, detail=None, timestamp=None, now=None, done_timeout=None):
   """Record one agent's report. Returns False if it was older than what we have."""
   now = time.time() if now is None else now
   timestamp = now if timestamp is None else timestamp
   agents = state['agents']
-  drop_stale(state, now)
+  drop_stale(state, now, done_timeout)
 
   current = agents.get(agent)
   # Hooks run in the background, so a late process must not undo a newer report
@@ -250,7 +260,8 @@ def default_device():
 def update(agent, new_state, label=None, detail=None, timestamp=None, open_device=default_device):
   """Record a report and refresh the device if the screen should change."""
   with locked_state() as state:
-    if apply_update(state, agent, new_state, label, detail, timestamp):
+    done_timeout = user_config.load()['done_timeout']
+    if apply_update(state, agent, new_state, label, detail, timestamp, done_timeout=done_timeout):
       refresh(state, open_device)
     return state.get('last_error')
 
@@ -267,10 +278,28 @@ def redraw(open_device=default_device):
   """Push the current status even if it looks unchanged: a display that was just plugged
   in may show an old status (Busy Tag) or its boot screen (ESP32)."""
   with locked_state() as state:
-    drop_stale(state, time.time())
+    drop_stale(state, time.time(), user_config.load()['done_timeout'])
     state.pop('shown_key', None)
     refresh(state, open_device)
     return state.get('last_error')
+
+
+def expire(open_device=default_device):
+  """Drop agents past their timeout and update the screen if any were dropped.
+
+  Returns (number dropped, device error). Called every minute by `busytag watch`, since
+  otherwise nothing runs when a timeout passes.
+  """
+  now = time.time()
+  done_timeout = user_config.load()['done_timeout']
+  # Check without the lock first: this runs every minute and usually finds nothing
+  if not any(is_stale(entry, now, done_timeout) for entry in peek()['agents'].values()):
+    return 0, None
+  with locked_state() as state:
+    dropped = drop_stale(state, now, done_timeout)
+    if dropped:
+      refresh(state, open_device)
+    return dropped, state.get('last_error')
 
 
 def remember_led_color(color):

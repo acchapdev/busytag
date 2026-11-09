@@ -358,3 +358,37 @@ def test_redraw_drops_stale_agents(state_dir):
   board.redraw(open_device=device)
   assert saved(state_dir)['agents'] == {}
   assert ('show', 'plugin1.png') in device.calls
+
+
+def test_done_agents_expire_after_timeout():
+  state = {'agents': {}}
+  board.apply_update(state, 'a', 'done', now=0)
+  board.apply_update(state, 'b', 'working', now=0)
+  board.apply_update(state, 'c', 'attention', now=3601, done_timeout=3600)
+  assert sorted(state['agents']) == ['b', 'c']
+
+
+def test_done_timeout_off_keeps_done_agents():
+  state = {'agents': {}}
+  board.apply_update(state, 'a', 'done', now=0)
+  board.apply_update(state, 'b', 'working', now=3601)
+  assert sorted(state['agents']) == ['a', 'b']
+
+
+def test_expire_drops_done_agent_and_restores_home(state_dir):
+  device = FakeDevice()
+  board.update('a', 'done', 'alpha', open_device=device)
+  with board.locked_state() as state:
+    state['agents']['a']['updated'] -= 3601
+  device.calls.clear()
+  assert board.expire(open_device=device) == (1, None)
+  assert saved(state_dir)['agents'] == {}
+  assert ('show', 'plugin1.png') in device.calls
+
+
+def test_expire_with_nothing_due_does_not_touch_device():
+  device = FakeDevice()
+  board.update('a', 'done', 'alpha', open_device=device)
+  device.calls.clear()
+  assert board.expire(open_device=device) == (0, None)
+  assert device.calls == []

@@ -120,7 +120,10 @@ busytag agents --reset    # forget everyone, restore your screen
 ```
 
 State lives in `~/.cache/busytag/` (`BUSYTAG_STATE_DIR` to override). Device errors from
-hooks are logged to `hook.log` there. Agents silent for 12 hours are dropped.
+hooks are logged to `hook.log` there. Finished (`done`) agents leave the display after
+60 minutes, which clears sessions whose terminal was closed without exiting the agent;
+set `done_timeout` under `[status]` in the config (minutes, 0 = off). Agents silent for
+12 hours are dropped whatever their state.
 
 The screen changes only when an agent reports. If the display was unplugged meanwhile,
 `busytag watch` (the plug-in refresh LaunchAgent) redraws it when it is plugged back in.

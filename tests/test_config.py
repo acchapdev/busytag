@@ -23,6 +23,7 @@ def test_defaults_are_written_on_first_use(config_file):
   assert config_file.exists()
   assert settings == {
     'brightness': 100,
+    'done_timeout': 3600,
     'agent_colors': {'claude': 'FF6000', 'opencode': '0060FF', 'default': 'FFFFFF'},
   }
 
@@ -66,3 +67,17 @@ def test_bad_color_falls_back_to_white(config_file):
 ])
 def test_scale_color(color, percent, expected):
   assert scale_color(color, percent) == expected
+
+
+def test_done_timeout(config_file):
+  config.load()
+  config_file.write_text(config_file.read_text().replace('done_timeout = 60', 'done_timeout = 5'))
+  assert config.load()['done_timeout'] == 300
+  config_file.write_text(config_file.read_text().replace('done_timeout = 5', 'done_timeout = 0'))
+  assert config.load()['done_timeout'] is None
+
+
+def test_existing_config_without_done_timeout_gets_default(config_file):
+  config_file.parent.mkdir(parents=True, exist_ok=True)
+  config_file.write_text('[leds]\nbrightness = 40\n')
+  assert config.load()['done_timeout'] == 3600

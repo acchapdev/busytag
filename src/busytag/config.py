@@ -19,6 +19,12 @@ DEFAULT_CONFIG = '''\
 # so busytag scales every LED color it sends.
 brightness = 100
 
+[status]
+# Minutes a finished ("done") agent stays on the display. Closing a terminal without
+# exiting the agent sends no end event, so this is what clears it. 0 = keep it until
+# the agent is silent for 12 hours, like the other states.
+done_timeout = 60
+
 # LED color for each agent type, so you can tell agents apart at a glance.
 # An agent's type is the part of its ID before ':' (Claude Code sessions report
 # as "claude:<session-id>"), or the whole ID when it has no ':'.
@@ -48,7 +54,8 @@ def load_document():
 
 
 def load():
-  """Return {'brightness': int, 'agent_colors': {kind: RRGGBB}} with defaults filled in."""
+  """Return {'brightness': int, 'done_timeout': seconds or None, 'agent_colors': {kind: RRGGBB}}
+  with defaults filled in."""
   defaults = tomlkit.parse(DEFAULT_CONFIG).unwrap()
   try:
     data = load_document().unwrap()
@@ -63,7 +70,15 @@ def load():
       colors[kind] = parse_color(str(settings.get('color', 'FFFFFF')))
     except ValueError:
       colors[kind] = 'FFFFFF'
-  return {'brightness': max(1, min(100, int(brightness))), 'agent_colors': colors}
+  try:
+    done_minutes = float(data.get('status', {}).get('done_timeout', 60))
+  except (TypeError, ValueError):
+    done_minutes = 60
+  return {
+    'brightness': max(1, min(100, int(brightness))),
+    'done_timeout': done_minutes * 60 if done_minutes > 0 else None,
+    'agent_colors': colors,
+  }
 
 
 def agent_kind(agent):
