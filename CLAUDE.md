@@ -132,7 +132,8 @@ tests/          # FakeSerial / FakeDevice, no hardware needed; `just test`
 - **Plug-in refresh:** the one long-running process is `busytag watch`, kept alive by the
   LaunchAgent `com.github.acchapdev.busytag.watch` (`busytag setup`, macOS only). It polls the
   port list every 2 s without opening ports and calls `status.redraw()` (push even if the
-  screen key is unchanged) when a display port appears, including at login. Log:
+  screen key is unchanged) when a display port appears, including at login, and
+  `status.expire()` about once a minute. Log:
   `~/.cache/busytag/watch.log`. The plist holds busytag's absolute path; rerun setup if it moves.
 - **TUI:** reads state.json every second without the lock (`status.peek`; writes are atomic
   replaces), so it never waits on a push. Device commands run in thread workers under
@@ -141,7 +142,9 @@ tests/          # FakeSerial / FakeDevice, no hardware needed; `just test`
   `query_one` searches the active screen, which may be a dialog. Tests drive it headless.
 - **Aggregation:** `attention` > `error` > `done` > `working` > `idle`; idle agents aren't
   shown. Reports carry their start time and older ones are ignored, because async hooks can
-  finish out of order. Agents silent for 12 h are dropped.
+  finish out of order. Agents silent for 12 h are dropped, and `done` agents after
+  `[status] done_timeout` minutes (default 60; 0 = off). `busytag watch` runs `status.expire()`
+  every minute, because otherwise drops only happen on the next report.
 - **Screen updates** take ~1 s (upload + show). The device won't overwrite the image it is
   showing (`ERROR:3`), so status images alternate between `bt_status0.png` and `bt_status1.png`.
 - **LEDs:** color = the most urgent agent's type color (config, keyed by the ID prefix

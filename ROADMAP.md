@@ -33,6 +33,8 @@ No open branches or worktrees. 110 tests pass (`just test`).
 - Desktop apps checked 2026-11-09: the Claude desktop **Code tab** runs the hooks, and
   **OpenCode desktop** reports through the service plugin with the right folder label.
   Desktop chat and Cowork (a VM) can't run host hooks; not needed.
+- Done timeout: `done` agents leave the display after `[status] done_timeout` minutes
+  (default 60), checked every minute by `busytag watch`. Fixes sessions closed without exiting.
 - Installer: `curl -fsSL https://raw.githubusercontent.com/acchapdev/busytag/main/install.sh | bash`,
   plus `busytag setup [--only claude|opencode] [--remove]`. Tested end to end from GitHub in a sandbox.
 
@@ -64,9 +66,6 @@ No open branches or worktrees. 110 tests pass (`just test`).
 - **Touch input**: there is an ESP32 1.47" board with a touch screen. What touch should do
   is still open; options to explore: tap to dismiss attention (clear the top agent), swipe
   through agents, tap an agent for its detail, or long-press to clear all.
-- **Shorter timeout for closed sessions**: closing a terminal without exiting the agent leaves
-  it as `done` for 12 h (and only drops then on the next report). A configurable timeout for
-  `done` agents would fix it; the TUI's clear key (`x`) is the manual way meanwhile.
 
 ## Open decisions
 
