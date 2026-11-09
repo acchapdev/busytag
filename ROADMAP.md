@@ -2,19 +2,10 @@
 
 Where the project stands and what is left. Update the checkpoint when you stop working.
 
-## Checkpoint: 2026-11-08 (ESP32 display)
+## Checkpoint: 2026-11-08
 
-Work in progress on branch `feat-esp32-backend` (worktree `~/projects/busytag.feat-esp32-backend`),
-not merged yet. 110 tests pass. Adds the Waveshare ESP32-C6-LCD-1.47 as a second display:
-firmware in `firmware/esp32-c6-lcd/` (flashed to the board and working), `esp32.py`,
-`open_device()` auto-detection, and a device-drawn path in `status.push`. Verified on the board:
-`info`, `status`, `agents`, `rotate` (rotation 3 is upright in the case), and update time (0.14 s).
-Also verified: the screen layout and the LED color order (RGB, fixed after red showed as green).
-The editable `busytag` on PATH still points at the main checkout, so hooks use the Busy Tag code
-until this branch is merged.
-
-Before this branch, everything was merged to `main` and pushed to
-https://github.com/acchapdev/busytag (public).
+Everything is merged to `main` and pushed to https://github.com/acchapdev/busytag (public).
+No open branches or worktrees. 110 tests pass (`just test`).
 
 **Done**
 
@@ -26,6 +17,11 @@ https://github.com/acchapdev/busytag (public).
 - Claude Code hooks: installed in `~/.claude/settings.json` on this laptop and working.
 - OpenCode 2 plugin: installed on this laptop as a symlink to the checkout (`just install-opencode`),
   tested through the background service.
+- ESP32 display (PR #1): a Waveshare ESP32-C6-LCD-1.47 running busytag's firmware
+  (`firmware/esp32-c6-lcd/`) shows the status board in landscape, with ~0.14 s updates.
+  `busytag` auto-detects it (a Busy Tag wins if both are plugged in). Verified on the board:
+  `info`, `status`, `agents`, `rotate` (rotation 3 is upright in the case), the layout, and
+  the LED color order (RGB).
 - Installer: `curl -fsSL https://raw.githubusercontent.com/acchapdev/busytag/main/install.sh | bash`,
   plus `busytag setup [--only claude|opencode] [--remove]`. Tested end to end from GitHub in a sandbox.
 
@@ -34,6 +30,8 @@ https://github.com/acchapdev/busytag (public).
 - `busytag` is an editable `uv tool` install of `~/projects/busytag` (`just install`), so code
   changes take effect immediately. Running `install.sh` here would replace it with a copy.
 - LED brightness is set to 10%.
+- The ESP32 display is flashed and plugged in; its factory flash is backed up (git-ignored) in
+  `device-backup/esp32-c6-lcd-factory/`.
 - Git pushes go over HTTPS with `gh` credentials (`gh auth setup-git`); the active `gh` account
   must be `acchapdev`. The SSH key signs in as `acchapm1`, which can't push to this repo.
 
