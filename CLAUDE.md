@@ -92,6 +92,27 @@ README has the pins, protocol, and how to restore the factory flash backup in `d
 - Don't run `pio pkg install` with the PlatformIO in `~/.platformio/penv`: its version
   (`6.2.0.post1`) fails pioarduino's `>=6.2.0` check, and it uninstalled the platform once.
 
+## Cheap Yellow Display (third device, touch)
+
+An ESP32-2432S028 "CYD" (ESP32, 4 MB flash, no PSRAM, ILI9341 used in portrait 240x320, XPT2046 resistive
+touch, active-low RGB LED) runs `firmware/esp32-cyd/` (`just cyd-flash`). It uses the same
+JSON-lines protocol as the C6 plus touch; its README has the pins and protocol additions.
+
+- USB is a **CH340** (`0x1A86:0x7523`, no serial number), not built-in USB, so
+  `open_device()` and `watch` also probe WCH ports (`device.ESP32_VENDOR_IDS`). Upload at 115200.
+- Browsing, detail view and display settings run on the board. **Jump to the agent** needs
+  the laptop: the board queues a `jump` event, and `busytag watch` polls `{"cmd":"events"}`
+  every 2 s per port (`touch.check`) under the hooks' lock. Ports whose firmware lacks
+  `events` (the C6) aren't polled again until replugged.
+- Jump targets come from the Claude Code hook's environment: `REX_SESSION`/`REX_BLOCK`
+  (`hooks.rex_location`) are stored as the agent's `jump` and kept across reports without
+  one. `jump.go` runs `rex block inspect` → `rex do session.select` (a Rex client action;
+  needs Remote Control, otherwise a warning) → `rex focus` → `open -a Rex`. OpenCode agents
+  have no jump target (the plugin runs in the OpenCode service).
+- Status rows to the ESP32 carry `agent_id, age_seconds, can_jump` after the four C6 fields;
+  they're added in `push_drawn`, not in `summarize`, so ages never change the screen key.
+- `events` also reports `fresh` (no host draw since boot); `touch.check` redraws then.
+
 ## Tech stack
 
 This project overrides the global Rails/React defaults. It is a local hardware tool.
@@ -118,10 +139,13 @@ src/busytag/
   render.py     # draws the 240x280 status screen (headline, reason, agent list)
   hooks.py      # Claude Code hook / OpenCode event (stdin JSON) → status update
   watch.py      # `busytag watch`: polls USB ports, redraws the screen when a display appears
+  touch.py      # taps from a touchscreen display (polled by watch): jump events, reset redraw
+  jump.py       # switch to an agent's Rex session/pane
   integrations/ # `busytag setup`: Claude Code hooks merge, OpenCode plugin, watch LaunchAgent
     opencode.ts # OpenCode 2 plugin (package data): forwards events to `busytag hook opencode`
   tui.py        # `busytag tui`: textual dashboard (live agents, display controls)
 firmware/esp32-c6-lcd/  # PlatformIO firmware for the Waveshare ESP32-C6-LCD-1.47
+firmware/esp32-cyd/     # PlatformIO firmware for the ESP32-2432S028 Cheap Yellow Display (touch)
 install.sh      # curl | bash installer: uv, `uv tool install`, `busytag setup`
 tests/          # FakeSerial / FakeDevice, no hardware needed; `just test`
 ```

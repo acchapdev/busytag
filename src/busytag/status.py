@@ -101,8 +101,12 @@ def drop_stale(state, now, done_timeout=None):
   return len(stale)
 
 
-def apply_update(state, agent, new_state, label=None, detail=None, timestamp=None, now=None, done_timeout=None):
-  """Record one agent's report. Returns False if it was older than what we have."""
+def apply_update(state, agent, new_state, label=None, detail=None, timestamp=None, now=None, done_timeout=None, jump=None):
+  """Record one agent's report. Returns False if it was older than what we have.
+
+  `jump` says where the agent's terminal is (e.g. {'rex_session', 'rex_block'}), so a tap on
+  a touchscreen display can switch to it; a report without one keeps the earlier one.
+  """
   now = time.time() if now is None else now
   timestamp = now if timestamp is None else timestamp
   agents = state['agents']
@@ -123,7 +127,17 @@ def apply_update(state, agent, new_state, label=None, detail=None, timestamp=Non
     'detail': detail or '',
     'updated': timestamp,
   }
+  jump = jump or (current or {}).get('jump')
+  if jump:
+    agents[agent]['jump'] = jump
   return True
+
+
+def ranked(agents):
+  """[(agent, entry)] of the active agents, most urgent first (the order rows are shown in)."""
+  active = [(agent, entry) for agent, entry in agents.items() if entry['state'] != 'idle']
+  active.sort(key=lambda item: (-PRIORITY[item[1]['state']], -item[1]['updated']))
+  return active
 
 
 def summarize(agents, settings):
@@ -131,10 +145,9 @@ def summarize(agents, settings):
 
   Each row is (label, state, detail, color), where color is the agent type's LED color.
   """
-  active = [(agent, entry) for agent, entry in agents.items() if entry['state'] != 'idle']
+  active = ranked(agents)
   if not active:
     return 'idle', []
-  active.sort(key=lambda item: (-PRIORITY[item[1]['state']], -item[1]['updated']))
   rows = [
     (entry['label'], entry['state'], entry['detail'], user_config.agent_color(settings, agent))
     for agent, entry in active
@@ -229,7 +242,14 @@ def push_drawn(device, state, top, rows, brightness):
   else:
     # The attention pattern alternates full and low; the firmware fades between them
     led = {'effect': 'pulse', 'color': value[0][1], 'low': value[1][1]}
-  device.show_status(top, rows, led)
+  # The touchscreen firmware also takes each agent's ID (for taps), age, and whether it can
+  # jump to the agent's terminal. They aren't in the screen key: the board ages rows itself.
+  now = time.time()
+  full_rows = [
+    (*row, agent, max(0, int(now - entry['updated'])), 'jump' in entry)
+    for row, (agent, entry) in zip(rows, ranked(state['agents']))
+  ]
+  device.show_status(top, full_rows, led)
   state['shown_key'] = screen_key(top, rows, brightness)
 
 
@@ -257,11 +277,11 @@ def default_device():
   return open_device()
 
 
-def update(agent, new_state, label=None, detail=None, timestamp=None, open_device=default_device):
+def update(agent, new_state, label=None, detail=None, timestamp=None, open_device=default_device, jump=None):
   """Record a report and refresh the device if the screen should change."""
   with locked_state() as state:
     done_timeout = user_config.load()['done_timeout']
-    if apply_update(state, agent, new_state, label, detail, timestamp, done_timeout=done_timeout):
+    if apply_update(state, agent, new_state, label, detail, timestamp, done_timeout=done_timeout, jump=jump):
       refresh(state, open_device)
     return state.get('last_error')
 

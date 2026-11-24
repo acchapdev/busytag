@@ -16,6 +16,9 @@ from busytag.colors import scale_color
 
 VENDOR_ID = 0x303A
 PRODUCT_ID = 0x81DF
+# Boards that may run the busytag ESP32 firmware: built-in USB (Espressif) or a WCH
+# USB-serial bridge (CH340/CH9102, as on the Cheap Yellow Display). Each is asked `hello`.
+ESP32_VENDOR_IDS = {VENDOR_ID, 0x1A86}
 BAUD_RATE = 460800
 
 ERROR_MESSAGES = {
@@ -55,7 +58,7 @@ def find_port():
 
 def open_device(port=None):
   """Open the display: a Busy Tag (found by its USB ID), else an ESP32 running the busytag
-  firmware (found by asking every Espressif port `hello`). `port` skips the search."""
+  firmware (found by asking every Espressif or WCH port `hello`). `port` skips the search."""
   from busytag.esp32 import Esp32Device
 
   ports = list_ports.comports()
@@ -66,7 +69,7 @@ def open_device(port=None):
     if candidate.vid == VENDOR_ID and candidate.pid == PRODUCT_ID:
       return Device(candidate.device.replace('/dev/tty.', '/dev/cu.'))
   for candidate in ports:
-    if candidate.vid != VENDOR_ID or candidate.device.startswith('/dev/tty.'):
+    if candidate.vid not in ESP32_VENDOR_IDS or candidate.device.startswith('/dev/tty.'):
       continue
     try:
       device = Esp32Device(candidate.device)
