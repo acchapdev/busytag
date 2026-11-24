@@ -1,4 +1,5 @@
-"""Serial transport for an ESP32 display running the busytag firmware (firmware/esp32-c6-lcd).
+"""Serial transport for an ESP32 display running the busytag firmware (firmware/esp32-c6-lcd,
+or firmware/esp32-cyd for the Cheap Yellow Display touchscreen).
 
 One JSON object per line each way; every request gets one `{"ok": ...}` reply line.
 The firmware draws the status screen itself, so there are no image uploads, and the
@@ -150,12 +151,24 @@ class Esp32Device:
     self.request('led', effect='off')
 
   def show_status(self, top, rows, led):
-    """rows: [(label, state, detail, RRGGBB)] most urgent first; led: {'effect', 'color', 'low'}."""
+    """rows: [(label, state, detail, RRGGBB[, agent_id, age_seconds, can_jump])] most urgent
+    first; led: {'effect', 'color', 'low'}. The C6 firmware reads only the first four fields."""
     rows = [
-      [ascii_text(label, 40), state, ascii_text(detail), color]
-      for label, state, detail, color in rows[:MAX_ROWS]
+      [ascii_text(label, 40), state, ascii_text(detail), color, *extra]
+      for label, state, detail, color, *extra in rows[:MAX_ROWS]
     ]
     self.request('status', top=top, rows=rows, led=led)
+
+  def events(self):
+    """Taps queued on a touchscreen board: ([{'type': 'jump', 'agent': id}], fresh), where
+    `fresh` means the board reset since the host last drew on it. None without touch."""
+    try:
+      reply = self.request('events')
+    except BusyTagError as error:
+      if 'unknown command' in str(error):
+        return None
+      raise
+    return reply.get('events', []), bool(reply.get('fresh'))
 
   def show_idle(self):
     self.request('idle')

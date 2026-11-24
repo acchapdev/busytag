@@ -348,11 +348,13 @@ def setup(
 
 @app.command()
 def watch():
-  """Redraw the screen when a display is plugged in, and drop timed-out agents (run by the LaunchAgent)."""
+  """Redraw the screen when a display is plugged in, drop timed-out agents, and act on taps
+  from a touchscreen display (run by the LaunchAgent)."""
   from busytag import status as board
+  from busytag import touch
   from busytag import watch as watcher
 
-  watcher.run(board.redraw, board.expire, log=lambda line: print(line, flush=True))
+  watcher.run(board.redraw, board.expire, log=lambda line: print(line, flush=True), touch=touch.check)
 
 
 @app.command()

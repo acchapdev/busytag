@@ -35,3 +35,15 @@ fw-flash PORT='':
 # Watch the ESP32 display's serial output (Ctrl-C to quit; busytag can't use the port meanwhile)
 fw-monitor:
   cd firmware/esp32-c6-lcd && uvx --from platformio pio device monitor
+
+# Build the Cheap Yellow Display (touchscreen) firmware
+cyd-build:
+  cd firmware/esp32-cyd && uvx --from platformio pio run
+
+# Build and flash the Cheap Yellow Display firmware (PORT overrides auto-detection)
+cyd-flash PORT='':
+  cd firmware/esp32-cyd && uvx --from platformio pio run -t upload {{ if PORT != '' { '--upload-port ' + PORT } else { '' } }}
+
+# Watch the Cheap Yellow Display's serial output (Ctrl-C to quit; busytag can't use the port meanwhile)
+cyd-monitor:
+  cd firmware/esp32-cyd && uvx --from platformio pio device monitor

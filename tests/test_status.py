@@ -317,7 +317,7 @@ def test_opencode_event_uses_session_folder_and_event_time():
     'type': 'session.execution.started', 'created': 1794177427488,
     'sessionID': 'ses_abc', 'directory': '/Users/me/projects/webapp', 'data': {'sessionID': 'ses_abc'},
   }
-  assert hooks.opencode_event(event, started=5) == ('opencode:ses_abc', 'working', 'webapp', '', 1794177427.488)
+  assert hooks.opencode_event(event, started=5) == ('opencode:ses_abc', 'working', 'webapp', '', 1794177427.488, None)
 
 
 def test_opencode_hook_updates_board(monkeypatch, state_dir):
@@ -328,7 +328,7 @@ def test_opencode_hook_updates_board(monkeypatch, state_dir):
     'data': {'action': 'edit', 'resources': ['main.py']},
   })))
   hooks.run('opencode')
-  assert calls == [(('opencode:ses_1', 'attention', 'api', 'Permission needed: edit main.py'), {'timestamp': 1.0})]
+  assert calls == [(('opencode:ses_1', 'attention', 'api', 'Permission needed: edit main.py'), {'timestamp': 1.0, 'jump': None})]
 
 
 def test_unknown_hook_source_is_logged(monkeypatch, state_dir):

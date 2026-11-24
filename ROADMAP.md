@@ -2,10 +2,36 @@
 
 Where the project stands and what is left. Update the checkpoint when you stop working.
 
-## Checkpoint: 2026-11-08
+## Checkpoint: 2026-11-23
 
-Everything is merged to `main` and pushed to https://github.com/acchapdev/busytag (public).
-No open branches or worktrees. 110 tests pass (`just test`).
+**In progress: Cheap Yellow Display (touch) on branch `feat-esp32-cyd`**, worktree
+`~/projects/busytag.feat-esp32-cyd` (also linked from `~/projects/esp32/cyd/busytag-cyd`).
+Nothing is committed yet; 166 tests pass. `main` is as of 2026-11-08 (everything merged and
+pushed to https://github.com/acchapdev/busytag).
+
+What's built (see `firmware/esp32-cyd/README.md` and the CYD section of `CLAUDE.md`):
+
+- Firmware 0.1.0 for the ESP32-2432S028 (ILI9341 + XPT2046 touch), flashed and running on
+  the board at `/dev/cu.wchusbserial110`. Agent list, detail view, settings (brightness, LED,
+  flip, sleep) all work on the board, checked by tapping.
+- Host: CH340 ports are probed with `hello`; rows carry agent ID, age and a jump flag;
+  the Claude hook records `REX_SESSION`/`REX_BLOCK`; `busytag watch` polls the board's
+  `events` every loop and runs `jump.go` (Rex session.select, focus, `open -a Rex`).
+
+Where it stopped:
+
+1. **Re-test Jump on the device.** The first test (12:46) failed with `block target ... not
+   found`: `rex block inspect` only searches the caller's session unless given `-s`. Fixed
+   in `jump.py` (passes `-s session`) with a test, but not yet re-tested by tapping. Tap an
+   agent from *another* Rex session, then `Jump to it`; Rex should switch within ~2 s.
+2. `busytag watch` must be running for Jump. The LaunchAgent isn't loaded on this laptop;
+   it was run by hand from a Claude session. Decide whether to `busytag setup` / load it.
+3. The installed `busytag` is an editable install of **the worktree** (all hooks run branch
+   code). After merging, run `just install` from `~/projects/busytag` to point it back.
+4. Unexplained: the board reset a few times right after the first flash; not reproduced
+   (40 port opens, no resets). `watch` redraws a reset board via the `fresh` flag.
+5. Then: `wt step commit`, `git push -u origin HEAD`, `gh pr create` (gh account
+   `acchapdev`); after the merge, `wt remove` and repoint the `busytag-cyd` link.
 
 **Done**
 

@@ -93,17 +93,28 @@ def opencode_update(event):
   return None
 
 
+def rex_location(environ=os.environ):
+  """Where this agent's terminal is, when it runs in Rex: hooks inherit the agent's
+  environment, and Rex sets these in every terminal. Used to jump to it from the display."""
+  session, block = environ.get('REX_SESSION'), environ.get('REX_BLOCK')
+  if session and block:
+    return {'rex_session': session, 'rex_block': block}
+  return None
+
+
 def claude_event(event, started):
-  """(agent, state, label, detail, timestamp) for a Claude Code hook event, or None."""
+  """(agent, state, label, detail, timestamp, jump) for a Claude Code hook event, or None."""
   update = claude_update(event)
   if update is None:
     return None
   state, detail = update
-  return f'claude:{event.get("session_id", "unknown")}', state, claude_label(event), detail, started
+  return f'claude:{event.get("session_id", "unknown")}', state, claude_label(event), detail, started, rex_location()
 
 
 def opencode_event(event, started):
-  """(agent, state, label, detail, timestamp) for an OpenCode event, or None."""
+  """(agent, state, label, detail, timestamp, jump) for an OpenCode event, or None.
+
+  No jump target: the plugin runs in the OpenCode service, not in the session's terminal."""
   update = opencode_update(event)
   if update is None:
     return None
@@ -112,7 +123,7 @@ def opencode_event(event, started):
   created = event.get('created')
   timestamp = created / 1000 if isinstance(created, (int, float)) else started
   label = Path(event.get('directory') or '').name or 'opencode'
-  return f'opencode:{event.get("sessionID", "unknown")}', state, label, detail, timestamp
+  return f'opencode:{event.get("sessionID", "unknown")}', state, label, detail, timestamp, None
 
 
 SOURCES = {'claude': claude_event, 'opencode': opencode_event}
@@ -128,8 +139,8 @@ def run(source='claude'):
     report = SOURCES[source](event, started)
     if report is None:
       return
-    agent, state, label, detail, timestamp = report
-    error = board.update(agent, state, label, detail, timestamp=timestamp)
+    agent, state, label, detail, timestamp, jump = report
+    error = board.update(agent, state, label, detail, timestamp=timestamp, jump=jump)
     if error:
       log(f'{source} {event.get("hook_event_name") or event.get("type")}: device not updated: {error}')
   except Exception:
